@@ -1,0 +1,18 @@
+{
+  "name": "mad-os-monorepo",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:child": "npm run dev -w apps/child",
+    "dev:master": "npm run dev -w apps/master",
+    "build:child": "npm run build -w apps/child",
+    "build:master": "npm run build -w apps/master"
+  },
+  "devDependencies": {
+    "electron": "^31.0.0",
+    "typescript": "^5.0.0"
+  }
+}
