@@ -156,7 +156,7 @@ const App: React.FC = () => {
   const activeApp = useMemo(() => PLUGINS.find(p => p.id === activeAppId), [activeAppId]);
 
   if (showSetup) {
-      return <Setup onComplete={handleSetupComplete} />;
+      return <Setup onComplete={() => setShowSetup(false)} />;
   }
 
   return (
@@ -191,6 +191,28 @@ const App: React.FC = () => {
 
       {/* 2. Main Application Area (Center) */}
       <main className="relative h-screen w-full flex items-center justify-center p-24 z-10">
+        {!activeAppId && (
+            <div className="absolute inset-0 p-32 grid grid-cols-4 gap-8">
+                {PLUGINS.map(plugin => (
+                    <motion.button
+                        key={plugin.id}
+                        initial={{ opacity: 0, scale: 0.8 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        whileHover={{ scale: 1.05, backgroundColor: 'rgba(255,255,255,0.05)' }}
+                        onClick={() => setActiveAppId(plugin.id)}
+                        className="flex flex-col items-center justify-center gap-4 p-8 rounded-[32px] border border-white/5 bg-white/0 backdrop-blur-sm transition-colors group"
+                    >
+                        <div className="p-5 bg-white/5 rounded-2xl group-hover:bg-white/10 transition-colors text-white/60 group-hover:text-white">
+                            {plugin.icon}
+                        </div>
+                        <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/40 group-hover:text-white/80">
+                            {plugin.title}
+                        </span>
+                    </motion.button>
+                ))}
+            </div>
+        )}
+
         <AnimatePresence mode="wait">
           {activeApp ? (
             <motion.div

@@ -6,7 +6,7 @@ let mainWindow;
 let isAllowExit = false;
 let kioskMode = true;
 
-const PASSWORDS = {
+let PASSWORDS = {
   EXIT: 'MADREST104',
   EVENT: 'EVT_TRIGGER_99',
   DASHBOARD: 'ADMIN_DASH'
@@ -77,6 +77,22 @@ ipcMain.on('SET_KIOSK', (event, enabled) => {
             setupShortcuts();
         } else {
             globalShortcut.unregisterAll();
+        }
+    }
+});
+
+ipcMain.on('UPDATE_CONFIG', (event, config) => {
+    if (config.passwords) {
+        PASSWORDS.EXIT = config.passwords.exit;
+        PASSWORDS.EVENT = config.passwords.event;
+        PASSWORDS.DASHBOARD = config.passwords.admin;
+    }
+    if (config.kiosk !== undefined) {
+        kioskMode = config.kiosk;
+        if (mainWindow) {
+            mainWindow.setKiosk(kioskMode);
+            if (kioskMode) setupShortcuts();
+            else globalShortcut.unregisterAll();
         }
     }
 });

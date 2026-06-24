@@ -30,9 +30,14 @@ const App: React.FC = () => {
   const [logMessage, setLogMessage] = useState('');
   const [audioUrl, setAudioUrl] = useState('');
   const [deviceFrames, setDeviceFrames] = useState<{ [id: string]: string }>({});
+  const [localIp, setLocalIp] = useState('0.0.0.0');
+  const [isSecurityMode, setIsSecurityMode] = useState(false);
 
   useEffect(() => {
     if ((window as any).electron) {
+      (window as any).electron.send('GET_LOCAL_IP');
+      (window as any).electron.on('LOCAL_IP_RESULT', (ip: string) => setLocalIp(ip));
+
       (window as any).electron.on('DEVICES_UPDATED', (devices: any[]) => {
         const formatted = devices.map(d => typeof d === 'string' ? { id: d, online: true } : d);
         setConnectedDevices(formatted);
@@ -96,12 +101,26 @@ const App: React.FC = () => {
           <div className="p-3 bg-white/5 rounded-2xl border border-white/10">
             <Cpu className="text-white/80" />
           </div>
-          <div>
-            <h1 className="text-xl font-bold tracking-tight">MADOS MASTER</h1>
-            <p className="text-[10px] text-white/40 uppercase tracking-[0.2em]">指令・統制センター</p>
+          <div className="flex items-center gap-6">
+            <div>
+                <h1 className="text-xl font-bold tracking-tight">MADOS MASTER</h1>
+                <p className="text-[10px] text-white/40 uppercase tracking-[0.2em]">指令・統制センター</p>
+            </div>
+            <div className="px-4 py-2 bg-white/5 rounded-xl border border-white/10 flex flex-col">
+                <span className="text-[8px] text-white/30 uppercase font-bold tracking-widest">Master_Server_IP</span>
+                <span className="text-sm font-mono text-white/80">{localIp}</span>
+            </div>
           </div>
         </div>
         <div className="flex items-center gap-8">
+            <button
+                onClick={() => setIsSecurityMode(!isSecurityMode)}
+                className={`flex items-center gap-2 px-4 py-2 rounded-xl border transition-all ${isSecurityMode ? 'bg-purple-500 text-white border-purple-400' : 'bg-white/5 text-white/40 border-white/10 hover:bg-white/10'}`}
+            >
+                <Eye size={16} />
+                <span className="text-[10px] font-bold uppercase tracking-widest">{isSecurityMode ? '通常表示へ' : '全画面監視'}</span>
+            </button>
+            <div className="w-[1px] h-10 bg-white/10" />
             <div className="flex flex-col items-end">
                 <span className="text-xs font-bold">{connectedDevices.length} 端末接続中</span>
                 <span className="text-[10px] text-green-500 font-bold tracking-widest uppercase">ネットワーク正常</span>
@@ -115,6 +134,30 @@ const App: React.FC = () => {
       </header>
 
       <div className="flex-1 grid grid-cols-12 gap-8 overflow-hidden relative z-10">
+        {isSecurityMode ? (
+            <div className="col-span-12 grid grid-cols-3 gap-8 overflow-y-auto p-4">
+                {connectedDevices.map((device, i) => (
+                    <div key={device.id} className="relative group bg-black rounded-[32px] border border-white/5 overflow-hidden aspect-video flex items-center justify-center">
+                        <div className="absolute top-4 left-4 flex items-center gap-2 z-20 bg-black/60 px-3 py-1.5 rounded-full backdrop-blur-md border border-white/10">
+                             <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
+                             <span className="text-[8px] font-mono text-white/80 uppercase">GRID_{i+1} :: {device.id.substring(0, 8)}</span>
+                        </div>
+                        {deviceFrames[device.id] ? (
+                            <img src={deviceFrames[device.id]} className="w-full h-full object-cover" alt="feed" />
+                        ) : (
+                            <div className="text-[10px] text-white/10 uppercase tracking-[0.3em] font-black italic">No Sight Link</div>
+                        )}
+                        <div className="absolute inset-0 pointer-events-none border-[16px] border-black/30 z-10" />
+                    </div>
+                ))}
+                {connectedDevices.length === 0 && (
+                     <div className="col-span-3 flex items-center justify-center border-2 border-dashed border-white/5 rounded-[48px] min-h-[400px] text-white/5 uppercase tracking-[1em] font-black text-4xl">
+                         EMPTY_GRID
+                     </div>
+                )}
+            </div>
+        ) : (
+        <>
         {/* Sidebar: Device List */}
         <aside className="col-span-3 flex flex-col gap-4">
           <h2 className="text-[10px] font-bold text-white/40 uppercase tracking-[0.2em] px-2">デプロイ範囲</h2>
@@ -352,6 +395,8 @@ const App: React.FC = () => {
               </div>
            </section>
         </main>
+        </>
+        )}
       </div>
     </div>
   );
