@@ -5,6 +5,7 @@ export interface OSContextType {
   playAudio: (id: string, options?: { loop?: boolean; volume?: number }) => void;
   stopAudio: (id: string) => void;
   closeApp: () => void;
+  emit: (event: string, data: any) => void;
   isConnected: boolean;
   activeAppId: string | null;
 }

@@ -78,6 +78,15 @@ io.on('connection', (socket) => {
         });
     }
   });
+
+  socket.on('CONNECTION_MSG', (data) => {
+    if (mainWindow) {
+        mainWindow.webContents.send('CONNECTION_MSG_RECEIVED', {
+            deviceId,
+            text: data.text
+        });
+    }
+  });
 });
 
 function updateDeviceList() {

@@ -30,6 +30,7 @@ const App: React.FC = () => {
   const [logMessage, setLogMessage] = useState('');
   const [audioUrl, setAudioUrl] = useState('');
   const [deviceFrames, setDeviceFrames] = useState<{ [id: string]: string }>({});
+  const [connectionLogs, setConnectionLogs] = useState<{ [id: string]: string[] }>({});
   const [localIp, setLocalIp] = useState('0.0.0.0');
   const [isSecurityMode, setIsSecurityMode] = useState(false);
 
@@ -45,6 +46,13 @@ const App: React.FC = () => {
 
       (window as any).electron.on('CAMERA_FRAME_RECEIVED', ({ deviceId, frame }: { deviceId: string, frame: string }) => {
         setDeviceFrames(prev => ({ ...prev, [deviceId]: frame }));
+      });
+
+      (window as any).electron.on('CONNECTION_MSG_RECEIVED', ({ deviceId, text }: { deviceId: string, text: string }) => {
+        setConnectionLogs(prev => ({
+          ...prev,
+          [deviceId]: [...(prev[deviceId] || []), text]
+        }));
       });
     }
   }, []);
@@ -297,6 +305,30 @@ const App: React.FC = () => {
            </div>
 
            <div className="grid grid-cols-2 gap-10">
+                {/* Section: Connection Monitoring */}
+                <section>
+                    <div className="flex items-center gap-3 mb-6">
+                        <MessageSquare size={14} className="text-white/40" />
+                        <h3 className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/40">コネクション・モニタリング</h3>
+                    </div>
+                    <div className="bg-white/5 border border-white/10 rounded-2xl p-4 h-[120px] overflow-y-auto font-mono text-[10px] space-y-1">
+                        {selectedChild === 'all' ? (
+                            <div className="text-white/20 italic uppercase tracking-widest text-center mt-8">個別端末を選択してログを表示</div>
+                        ) : (
+                            (connectionLogs[selectedChild] || []).length > 0 ? (
+                                connectionLogs[selectedChild].map((msg, i) => (
+                                    <div key={i} className="flex gap-2">
+                                        <span className="text-blue-500 font-bold">[{new Date().toLocaleTimeString()}]</span>
+                                        <span className="text-white/60">{msg}</span>
+                                    </div>
+                                ))
+                            ) : (
+                                <div className="text-white/20 italic uppercase tracking-widest text-center mt-8">受信ログなし</div>
+                            )
+                        )}
+                    </div>
+                </section>
+
            {/* Section: Remote Typing */}
            <section>
               <div className="flex items-center gap-3 mb-6">

