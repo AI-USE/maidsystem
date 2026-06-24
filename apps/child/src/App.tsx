@@ -109,6 +109,20 @@ const App: React.FC = () => {
       (window as any).electron.on('MASTER_FOUND', handleMasterFound);
       (window as any).electron.on('PASSWORD_ACTION', handlePasswordAction);
       (window as any).electron.on('PASSWORD_RESULT', handlePasswordResult);
+
+      // Sync initial config to main process
+      const savedExit = localStorage.getItem('pass_exit');
+      const savedEvent = localStorage.getItem('pass_event');
+      const savedAdmin = localStorage.getItem('pass_admin');
+      if (savedExit || savedEvent || savedAdmin) {
+          (window as any).electron.send('UPDATE_CONFIG', {
+              passwords: {
+                  exit: savedExit || 'MADREST104',
+                  event: savedEvent || 'EVT_TRIGGER_99',
+                  admin: savedAdmin || 'ADMIN_DASH'
+              }
+          });
+      }
     }
   }, []);
 

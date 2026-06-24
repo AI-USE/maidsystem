@@ -1,5 +1,4 @@
 import React from 'react';
-import { TerminalPlugin } from './Terminal';
 import { CalculatorPlugin } from './Calculator';
 import { ConnectionPlugin } from './Connection';
 
@@ -11,7 +10,6 @@ export interface PluginDefinition {
 }
 
 export const PLUGINS: PluginDefinition[] = [
-  TerminalPlugin,
   CalculatorPlugin,
   ConnectionPlugin,
 ];

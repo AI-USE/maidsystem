@@ -134,9 +134,10 @@ const App: React.FC = () => {
                 <h1 className="text-xl font-bold tracking-tight">MADOS MASTER</h1>
                 <p className="text-[10px] text-white/40 uppercase tracking-[0.2em]">指令・統制センター</p>
             </div>
-            <div className="px-4 py-2 bg-white/5 rounded-xl border border-white/10 flex flex-col">
-                <span className="text-[8px] text-white/30 uppercase font-bold tracking-widest">Master_Server_IP</span>
-                <span className="text-sm font-mono text-white/80">{localIp}</span>
+            <div className="px-4 py-2 bg-white/5 rounded-xl border border-white/10 flex flex-col group relative overflow-hidden">
+                <div className="absolute inset-0 bg-green-500/5 opacity-0 group-hover:opacity-100 transition-opacity" />
+                <span className="text-[8px] text-white/30 uppercase font-bold tracking-widest relative z-10">Master_Connection_URL</span>
+                <span className="text-sm font-mono text-green-400 font-bold relative z-10">http://{localIp}:3030</span>
             </div>
           </div>
         </div>
@@ -262,7 +263,6 @@ const App: React.FC = () => {
               </div>
               <div className="grid grid-cols-3 gap-6">
                 {[
-                  { id: 'terminal', name: 'CORE_TERMINAL', icon: <Terminal size={20} />, color: 'bg-blue-500/10 text-blue-400' },
                   { id: 'calculator', name: 'CALC_UNIT', icon: <Sliders size={20} />, color: 'bg-green-500/10 text-green-400' },
                   { id: 'connection', name: 'CONN_LINK', icon: <MessageSquare size={20} />, color: 'bg-orange-500/10 text-orange-400' },
                   { id: 'close', name: 'TERMINATE_ALL', icon: <Power size={20} />, color: 'bg-red-500/10 text-red-400' }

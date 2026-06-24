@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Wifi, Shield, ArrowRight } from 'lucide-react';
+import { Wifi, Shield, ArrowRight, CheckCircle2, XCircle, Loader2 } from 'lucide-react';
 
 interface SetupProps {
   onComplete: () => void;
@@ -8,17 +8,42 @@ interface SetupProps {
 
 export const Setup: React.FC<SetupProps> = ({ onComplete }) => {
   const [step, setStep] = useState(1);
-  const [ip, setIp] = useState(localStorage.getItem('masterUrl') || '');
+  const [ip, setIp] = useState(localStorage.getItem('masterUrl')?.replace('http://', '').replace(':3030', '') || '');
   const [kioskEnabled, setKioskEnabled] = useState(true);
+  const [testStatus, setTestStatus] = useState<'idle' | 'testing' | 'success' | 'error'>('idle');
   const [passwords, setPasswords] = useState({
       exit: localStorage.getItem('pass_exit') || 'MADREST104',
       event: localStorage.getItem('pass_event') || 'EVT_TRIGGER_99',
       admin: localStorage.getItem('pass_admin') || 'ADMIN_DASH'
   });
 
+  const testConnection = async () => {
+    setTestStatus('testing');
+    const targetUrl = ip.startsWith('http') ? ip : `http://${ip}:3030`;
+
+    try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 3000);
+
+        // Try to fetch the master root or a known endpoint
+        const response = await fetch(targetUrl, {
+            mode: 'no-cors',
+            signal: controller.signal
+        });
+        clearTimeout(timeoutId);
+        setTestStatus('success');
+    } catch (err) {
+        console.error('Connection test failed:', err);
+        setTestStatus('error');
+    }
+  };
+
   const saveAndNext = () => {
-      if (step === 3) {
-          localStorage.setItem('masterUrl', ip);
+      if (step === 1) {
+          const finalIp = ip.startsWith('http') ? ip : `http://${ip}:3030`;
+          localStorage.setItem('masterUrl', finalIp);
+          setStep(2);
+      } else if (step === 3) {
           localStorage.setItem('pass_exit', passwords.exit);
           localStorage.setItem('pass_event', passwords.event);
           localStorage.setItem('pass_admin', passwords.admin);
@@ -65,13 +90,37 @@ export const Setup: React.FC<SetupProps> = ({ onComplete }) => {
                 </div>
                 <h1 className="text-2xl font-bold mb-2 tracking-tight">ネットワーク設定</h1>
                 <p className="text-sm text-white/40 mb-10">親機端末のIPアドレスを入力してください。</p>
-                <input
-                    type="text"
-                    placeholder="0.0.0.0"
-                    className="w-full bg-white/5 border border-white/10 rounded-2xl px-6 py-4 text-center outline-none focus:border-white/30 transition-all text-xl font-mono tracking-widest mb-8"
-                    value={ip}
-                    onChange={(e) => setIp(e.target.value)}
-                />
+
+                <div className="relative mb-4">
+                    <input
+                        type="text"
+                        placeholder="0.0.0.0"
+                        className={`w-full bg-white/5 border rounded-2xl px-6 py-4 text-center outline-none transition-all text-xl font-mono tracking-widest ${
+                            testStatus === 'success' ? 'border-green-500/50' :
+                            testStatus === 'error' ? 'border-red-500/50' : 'border-white/10 focus:border-white/30'
+                        }`}
+                        value={ip}
+                        onChange={(e) => {
+                            setIp(e.target.value);
+                            setTestStatus('idle');
+                        }}
+                    />
+                    {testStatus !== 'idle' && (
+                        <div className="absolute right-4 top-1/2 -translate-y-1/2">
+                            {testStatus === 'testing' && <Loader2 size={20} className="text-white/40 animate-spin" />}
+                            {testStatus === 'success' && <CheckCircle2 size={20} className="text-green-500" />}
+                            {testStatus === 'error' && <XCircle size={20} className="text-red-500" />}
+                        </div>
+                    )}
+                </div>
+
+                <button
+                    onClick={testConnection}
+                    disabled={!ip || testStatus === 'testing'}
+                    className="w-full py-3 mb-8 rounded-xl bg-white/5 border border-white/10 text-[10px] font-bold uppercase tracking-widest hover:bg-white/10 transition-all disabled:opacity-50"
+                >
+                    接続テストを実行
+                </button>
             </div>
         )}
 
