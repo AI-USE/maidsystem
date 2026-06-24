@@ -10,18 +10,23 @@ let kioskMode = true;
 const CONFIG_PATH = path.join(app.getPath('userData'), 'mados_config.json');
 
 let PASSWORDS = {
-  EXIT: 'MADREST104',
-  EVENT: 'EVT_TRIGGER_99',
-  DASHBOARD: 'ADMIN_DASH'
+  exit: 'MADREST104',
+  event: 'EVT_TRIGGER_99',
+  admin: 'ADMIN_DASH'
 };
 
 function loadConfig() {
     try {
         if (fs.existsSync(CONFIG_PATH)) {
             const data = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
-            if (data.passwords) PASSWORDS = { ...PASSWORDS, ...data.passwords };
+            if (data.passwords) {
+                // Support both cases for backward compatibility during transition
+                PASSWORDS.exit = data.passwords.exit || data.passwords.EXIT || PASSWORDS.exit;
+                PASSWORDS.event = data.passwords.event || data.passwords.EVENT || PASSWORDS.event;
+                PASSWORDS.admin = data.passwords.admin || data.passwords.DASHBOARD || PASSWORDS.admin;
+            }
             if (data.kiosk !== undefined) kioskMode = data.kiosk;
-            console.log('Config loaded:', PASSWORDS);
+            console.log('Config loaded into memory:', PASSWORDS);
         }
     } catch (err) {
         console.error('Failed to load config:', err);
@@ -84,13 +89,13 @@ function setupShortcuts() {
 }
 
 ipcMain.on('VERIFY_PASSWORD', (event, password) => {
-  console.log('Verifying password. Current config:', PASSWORDS);
-  if (password === PASSWORDS.EXIT) {
+  console.log('Verifying password:', password, 'against:', PASSWORDS);
+  if (password === PASSWORDS.exit) {
     isAllowExit = true;
     app.quit();
-  } else if (password === PASSWORDS.EVENT) {
+  } else if (password === PASSWORDS.event) {
     event.reply('PASSWORD_ACTION', 'TRIGGER_EVENT');
-  } else if (password === PASSWORDS.DASHBOARD) {
+  } else if (password === PASSWORDS.admin) {
     event.reply('PASSWORD_ACTION', 'SHOW_SETUP');
   } else {
     event.reply('PASSWORD_RESULT', false);
@@ -107,13 +112,15 @@ ipcMain.on('SET_KIOSK', (event, enabled) => {
             globalShortcut.unregisterAll();
         }
     }
+    saveConfig();
 });
 
 ipcMain.on('UPDATE_CONFIG', (event, config) => {
+    console.log('Updating config in main process:', config);
     if (config.passwords) {
-        PASSWORDS.EXIT = config.passwords.exit;
-        PASSWORDS.EVENT = config.passwords.event;
-        PASSWORDS.DASHBOARD = config.passwords.admin;
+        PASSWORDS.exit = config.passwords.exit;
+        PASSWORDS.event = config.passwords.event;
+        PASSWORDS.admin = config.passwords.admin;
     }
     if (config.kiosk !== undefined) {
         kioskMode = config.kiosk;

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Wifi, Shield, ArrowRight, CheckCircle2, XCircle, Loader2 } from 'lucide-react';
+import { Wifi, Shield, ArrowRight, CheckCircle2, XCircle, Loader2, Eye, EyeOff } from 'lucide-react';
 
 interface SetupProps {
   onComplete: () => void;
@@ -11,6 +11,7 @@ export const Setup: React.FC<SetupProps> = ({ onComplete }) => {
   const [ip, setIp] = useState(localStorage.getItem('masterUrl')?.replace('http://', '').replace(':3030', '') || '');
   const [kioskEnabled, setKioskEnabled] = useState(true);
   const [testStatus, setTestStatus] = useState<'idle' | 'testing' | 'success' | 'error'>('idle');
+  const [showPasswords, setShowPasswords] = useState(false);
   const [passwords, setPasswords] = useState({
       exit: localStorage.getItem('pass_exit') || 'MADREST104',
       event: localStorage.getItem('pass_event') || 'EVT_TRIGGER_99',
@@ -132,12 +133,20 @@ export const Setup: React.FC<SetupProps> = ({ onComplete }) => {
                 <div className="w-16 h-16 bg-white/5 rounded-[24px] flex items-center justify-center mx-auto mb-8 border border-white/10">
                     <Shield className="text-white/60" size={32} />
                 </div>
-                <h1 className="text-2xl font-bold mb-2 tracking-tight">パスワード設定</h1>
+                <div className="flex items-center justify-between mb-2">
+                    <h1 className="text-2xl font-bold tracking-tight">パスワード設定</h1>
+                    <button
+                        onClick={() => setShowPasswords(!showPasswords)}
+                        className="p-2 text-white/20 hover:text-white transition-colors"
+                    >
+                        {showPasswords ? <EyeOff size={20} /> : <Eye size={20} />}
+                    </button>
+                </div>
                 <div className="space-y-4 text-left">
                     <div>
                         <label className="text-[10px] uppercase tracking-widest text-white/40 ml-2">終了用</label>
                         <input
-                            type="text"
+                            type={showPasswords ? "text" : "password"}
                             className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 outline-none focus:border-white/30 transition-all font-mono"
                             value={passwords.exit}
                             onChange={(e) => setPasswords({...passwords, exit: e.target.value})}
@@ -146,7 +155,7 @@ export const Setup: React.FC<SetupProps> = ({ onComplete }) => {
                     <div>
                         <label className="text-[10px] uppercase tracking-widest text-white/40 ml-2">イベント用</label>
                         <input
-                            type="text"
+                            type={showPasswords ? "text" : "password"}
                             className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 outline-none focus:border-white/30 transition-all font-mono"
                             value={passwords.event}
                             onChange={(e) => setPasswords({...passwords, event: e.target.value})}
@@ -155,7 +164,7 @@ export const Setup: React.FC<SetupProps> = ({ onComplete }) => {
                     <div>
                         <label className="text-[10px] uppercase tracking-widest text-white/40 ml-2">管理者用</label>
                         <input
-                            type="text"
+                            type={showPasswords ? "text" : "password"}
                             className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 outline-none focus:border-white/30 transition-all font-mono"
                             value={passwords.admin}
                             onChange={(e) => setPasswords({...passwords, admin: e.target.value})}

@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Users,
-  Terminal,
   Camera,
   Zap,
   Cpu,
@@ -14,7 +13,14 @@ import {
   AlertCircle,
   Sliders,
   Monitor,
-  Clock
+  Clock,
+  Trash2,
+  Video,
+  VideoOff,
+  Unlock,
+  Lock,
+  Send,
+  Play
 } from 'lucide-react';
 import { DeviceStats } from './components/DeviceStats';
 
@@ -39,6 +45,7 @@ const App: React.FC = () => {
   const [localIp, setLocalIp] = useState('0.0.0.0');
   const [isSecurityMode, setIsSecurityMode] = useState(false);
   const [pendingApprovals, setPendingApprovals] = useState<any[]>([]);
+  const [activeTab, setActiveTab] = useState<'fleet' | 'performance'>('fleet');
 
   useEffect(() => {
     if ((window as any).electron) {
@@ -136,6 +143,14 @@ const App: React.FC = () => {
       }
   };
 
+  const removeDevice = (id: string) => {
+    if (confirm(`デバイス ${id.substring(0,6)} の登録を削除しますか？`)) {
+        if ((window as any).electron) {
+            (window as any).electron.send('REMOVE_DEVICE', id);
+        }
+    }
+  };
+
   return (
     <div className="min-h-screen bg-[#0d0d0f] text-[#f5f5f7] flex flex-col p-8 gap-8 font-sans">
       <div className="aura-bg opacity-40" />
@@ -218,375 +233,207 @@ const App: React.FC = () => {
           )}
       </AnimatePresence>
 
-      <div className="flex-1 grid grid-cols-12 gap-8 overflow-hidden relative z-10">
-        {isSecurityMode ? (
-            <div className="col-span-12 grid grid-cols-3 gap-6 overflow-y-auto p-4">
-                {connectedDevices.map((device, i) => (
-                    <div key={device.id} className="relative group bg-black rounded-[24px] border border-white/5 overflow-hidden aspect-video flex items-center justify-center shadow-2xl">
-                        {/* Scanline Effect Overlay */}
-                        <div className="absolute inset-0 pointer-events-none z-30 opacity-20 bg-[linear-gradient(rgba(18,16,16,0)_50%,rgba(0,0,0,0.25)_50%),linear-gradient(90deg,rgba(255,0,0,0.06),rgba(0,255,0,0.02),rgba(0,0,255,0.06))] bg-[length:100%_2px,3px_100%]" />
-
-                        <div className="absolute top-4 left-4 flex items-center gap-2 z-40 bg-black/80 px-3 py-1.5 rounded-lg backdrop-blur-md border border-white/10">
-                             <div className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
-                             <span className="text-[9px] font-mono text-white/90 uppercase tracking-widest">CAM_{i+1} :: {device.id.substring(0, 6)}</span>
-                        </div>
-
-                        <div className="absolute bottom-4 right-4 z-40 flex flex-col items-end gap-1">
-                            <span className="text-[10px] font-mono text-white/60 tabular-nums bg-black/40 px-2 py-1 rounded">
-                                {new Date().toLocaleTimeString()}
-                            </span>
-                            <span className="text-[8px] font-bold text-green-500/80 bg-black/40 px-2 py-0.5 rounded uppercase tracking-tighter">
-                                ENCRYPTED_STREAM
-                            </span>
-                        </div>
-
-                        {deviceFrames[device.id] ? (
-                            <img src={deviceFrames[device.id]} className="w-full h-full object-cover opacity-80 grayscale contrast-125" alt="feed" />
-                        ) : (
-                            <div className="text-[10px] text-white/5 uppercase tracking-[0.5em] font-black italic">SEARCHING_SIGNAL...</div>
-                        )}
-
-                        <div className="absolute inset-0 pointer-events-none border-[1px] border-white/10 z-20" />
-                    </div>
-                ))}
-                {connectedDevices.length === 0 && (
-                     <div className="col-span-3 flex items-center justify-center border-2 border-dashed border-white/5 rounded-[48px] min-h-[400px] text-white/5 uppercase tracking-[1em] font-black text-4xl">
-                         EMPTY_GRID
-                     </div>
-                )}
+      <div className="flex-1 flex gap-8 overflow-hidden relative z-10">
+        {/* Simplified Sidebar: Tabs & Fleet List */}
+        <aside className="w-80 flex flex-col gap-6">
+            <div className="flex flex-col gap-2 bg-white/5 p-2 rounded-2xl border border-white/10">
+                <button
+                    onClick={() => setActiveTab('fleet')}
+                    className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${activeTab === 'fleet' ? 'bg-white text-black font-bold' : 'text-white/40 hover:bg-white/5'}`}
+                >
+                    <Users size={18} />
+                    <span className="text-[10px] uppercase tracking-widest">フリート管理</span>
+                </button>
+                <button
+                    onClick={() => setActiveTab('performance')}
+                    className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${activeTab === 'performance' ? 'bg-white text-black font-bold' : 'text-white/40 hover:bg-white/5'}`}
+                >
+                    <Zap size={18} />
+                    <span className="text-[10px] uppercase tracking-widest">公演パネル</span>
+                </button>
             </div>
-        ) : (
-        <>
-        {/* Sidebar: Device List */}
-        <aside className="col-span-3 flex flex-col gap-4">
-          <h2 className="text-[10px] font-bold text-white/40 uppercase tracking-[0.2em] px-2">デプロイ範囲</h2>
-          <div className="flex-1 space-y-2 overflow-y-auto pr-2">
-            <button
-              onClick={() => setSelectedChild('all')}
-              className={`w-full group relative flex items-center justify-between p-4 transition-all duration-300 rounded-[20px] border ${
-                selectedChild === 'all'
-                  ? 'bg-white/10 border-white/20 shadow-xl'
-                  : 'bg-white/5 border-transparent hover:bg-white/10'
-              }`}
-            >
-              <div className="flex items-center gap-3">
-                <Users size={16} className={selectedChild === 'all' ? 'text-white' : 'text-white/40'} />
-                <span className={`text-xs font-bold ${selectedChild === 'all' ? 'text-white' : 'text-white/40'}`}>BROADCAST_ALL</span>
-              </div>
-              <div className="px-2 py-1 bg-white/5 rounded-lg text-[10px] font-mono opacity-40">{connectedDevices.length}</div>
-            </button>
 
-            {connectedDevices.map(device => (
-              <button
-                key={device.id}
-                onClick={() => setSelectedChild(device.id)}
-                className={`w-full flex items-center gap-4 p-4 transition-all duration-300 rounded-[20px] border ${
-                  selectedChild === device.id
-                    ? 'bg-white/10 border-white/20 shadow-xl'
-                    : 'bg-white/5 border-transparent hover:bg-white/10'
-                }`}
-              >
-                <div className={`w-2 h-2 rounded-full ${device.online ? 'bg-green-400' : 'bg-red-400'} animate-pulse`} />
-                <div className="flex flex-col items-start overflow-hidden">
-                  <span className={`text-xs font-bold truncate w-full text-left ${selectedChild === device.id ? 'text-white' : 'text-white/60'}`}>
-                      DEVICE_{device.id.substring(0, 8)}
-                  </span>
-                  <span className="text-[8px] opacity-20 font-mono uppercase tracking-tighter">
-                      {device.activeApp || 'IDLE_STATE'}
-                  </span>
+            <div className="flex-1 flex flex-col gap-4 overflow-hidden">
+                <div className="flex items-center justify-between px-2">
+                    <h2 className="text-[10px] font-bold text-white/40 uppercase tracking-[0.2em]">端末一覧</h2>
+                    <span className="text-[10px] font-mono text-white/20">{connectedDevices.length} UNITS</span>
                 </div>
-              </button>
-            ))}
-          </div>
+
+                <div className="flex-1 space-y-2 overflow-y-auto pr-2">
+                    <button
+                        onClick={() => setSelectedChild('all')}
+                        className={`w-full flex items-center justify-between p-4 rounded-[20px] border transition-all ${
+                            selectedChild === 'all'
+                            ? 'bg-blue-500 border-blue-400 text-white shadow-lg'
+                            : 'bg-white/5 border-transparent hover:bg-white/10 text-white/40'
+                        }`}
+                    >
+                        <div className="flex items-center gap-3">
+                            <Users size={16} />
+                            <span className="text-[10px] font-black uppercase tracking-widest">一斉操作モード</span>
+                        </div>
+                    </button>
+
+                    {connectedDevices.map(device => (
+                        <div key={device.id} className="group relative">
+                            <button
+                                onClick={() => setSelectedChild(device.id)}
+                                className={`w-full flex items-center justify-between p-4 rounded-[20px] border transition-all ${
+                                    selectedChild === device.id
+                                    ? 'bg-white/10 border-white/20 shadow-xl'
+                                    : 'bg-white/5 border-transparent hover:bg-white/10'
+                                }`}
+                            >
+                                <div className="flex items-center gap-3">
+                                    <div className={`w-1.5 h-1.5 rounded-full ${device.online ? 'bg-green-400' : 'bg-red-400'} animate-pulse`} />
+                                    <span className={`text-[10px] font-mono uppercase tracking-widest ${selectedChild === device.id ? 'text-white' : 'text-white/60'}`}>
+                                        ID:{device.id.substring(0, 6)}
+                                    </span>
+                                </div>
+                                <span className="text-[8px] opacity-20 font-mono uppercase truncate max-w-[60px]">{device.activeApp || 'IDLE'}</span>
+                            </button>
+                            <button
+                                onClick={(e) => { e.stopPropagation(); removeDevice(device.id); }}
+                                className="absolute -right-2 -top-2 p-1.5 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity shadow-lg"
+                            >
+                                <Trash2 size={12} />
+                            </button>
+                        </div>
+                    ))}
+                </div>
+            </div>
         </aside>
 
-        {/* Main Content: Controls */}
-        <main className="col-span-9 glass-panel p-10 flex flex-col gap-10 overflow-y-auto">
-           {/* Section: Quick Stats */}
-           <section>
-              <div className="flex items-center gap-3 mb-6">
-                <Monitor size={14} className="text-white/40" />
-                <h3 className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/40">端末ステータス概況</h3>
-              </div>
-              <DeviceStats devices={connectedDevices} />
-           </section>
-
-           {/* Section: Application Control */}
-           <section>
-              <div className="flex items-center gap-3 mb-6">
-                <Layout size={14} className="text-white/40" />
-                <h3 className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/40">インターフェース・オーバーライド</h3>
-              </div>
-              <div className="grid grid-cols-3 gap-6">
-                {[
-                  { id: 'calculator', name: 'CALC_UNIT', icon: <Sliders size={20} />, color: 'bg-green-500/10 text-green-400' },
-                  { id: 'connection', name: 'CONN_LINK', icon: <MessageSquare size={20} />, color: 'bg-orange-500/10 text-orange-400' },
-                  { id: 'close', name: 'TERMINATE_ALL', icon: <Power size={20} />, color: 'bg-red-500/10 text-red-400' }
-                ].map(app => (
-                  <button
-                    key={app.id}
-                    onClick={() => app.id === 'close' ? sendCommand('CLOSE_APP') : sendCommand('LAUNCH_APP', { appId: app.id })}
-                    className={`flex flex-col items-center gap-4 p-8 rounded-[32px] border border-white/5 hover:border-white/20 transition-all duration-300 ${app.color} hover:bg-white/5`}
-                  >
-                    {app.icon}
-                    <span className="text-[10px] font-bold tracking-widest">{app.name}</span>
-                  </button>
-                ))}
-              </div>
-           </section>
-
-           <div className="grid grid-cols-2 gap-10">
-                {/* Section: Environment FX */}
-                <section>
-                    <div className="flex items-center gap-3 mb-6">
-                        <Zap size={14} className="text-white/40" />
-                        <h3 className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/40">環境操作</h3>
-                    </div>
-                    <div className="grid grid-cols-2 gap-4">
-                        <button
-                            onClick={() => sendCommand('SHAKE_SCREEN')}
-                            className="flex items-center justify-center gap-3 p-4 bg-white/5 rounded-2xl border border-white/5 hover:bg-white/10 transition-all text-[10px] font-bold uppercase"
-                        >
-                            <Zap size={14} />
-                            画面揺れ
-                        </button>
-                        <button
-                            onClick={triggerError}
-                            className="flex items-center justify-center gap-3 p-4 bg-white/5 rounded-2xl border border-white/5 hover:bg-white/10 transition-all text-[10px] font-bold uppercase text-orange-400"
-                        >
-                            <AlertCircle size={14} />
-                            エラー表示
-                        </button>
-                        <button
-                            onClick={toggleFreeze}
-                            className={`col-span-2 flex items-center justify-center gap-3 p-5 rounded-2xl border transition-all text-[10px] font-bold uppercase ${
-                                isFrozen
-                                ? 'bg-red-500 border-red-500 text-white shadow-[0_0_20px_rgba(239,68,68,0.4)]'
-                                : 'bg-red-500/10 border-red-500/20 text-red-500 hover:bg-red-500/20'
-                            }`}
-                        >
-                            <ShieldAlert size={16} />
-                            {isFrozen ? 'システム凍結解除' : 'システム一斉凍結'}
-                        </button>
-                    </div>
-                </section>
-
-                {/* Section: Camera Settings */}
-                <section>
-                    <div className="flex items-center gap-3 mb-6">
-                        <Sliders size={14} className="text-white/40" />
-                        <h3 className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/40">視覚設定</h3>
-                    </div>
-                    <div className="space-y-6 bg-white/5 p-6 rounded-2xl border border-white/5">
-                        <div className="flex justify-between items-center">
-                            <span className="text-[10px] font-bold uppercase text-white/40">FPS Control</span>
-                            <span className="text-xs font-mono">{cameraFps} FPS</span>
-                        </div>
-                        <input
-                            type="range" min="1" max="60" step="1"
-                            className="w-full accent-white opacity-40 hover:opacity-100 transition-opacity"
-                            value={cameraFps}
-                            onChange={(e) => setCameraFps(parseInt(e.target.value))}
-                            onMouseUp={() => cameraActive && sendCommand('SET_CAMERA', { active: true, fps: cameraFps })}
-                        />
-                        <button
-                            onClick={toggleCamera}
-                            className={`w-full flex items-center justify-center gap-3 p-4 rounded-xl border transition-all text-[10px] font-bold uppercase ${
-                                cameraActive
-                                ? 'bg-purple-500 border-purple-500 text-white'
-                                : 'bg-white/5 border-white/10 text-white/60 hover:bg-white/10'
-                            }`}
-                        >
-                            <Camera size={16} />
-                            {cameraActive ? 'カメラ停止' : 'カメラ起動'}
-                        </button>
-                    </div>
-                </section>
-           </div>
-
-           <div className="grid grid-cols-2 gap-10">
-                {/* Section: Connection Monitoring */}
-                <section>
-                    <div className="flex items-center gap-3 mb-6">
-                        <MessageSquare size={14} className="text-white/40" />
-                        <h3 className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/40">コネクション・モニタリング</h3>
-                    </div>
-                    <div className="bg-white/5 border border-white/10 rounded-2xl p-4 h-[120px] overflow-y-auto font-mono text-[10px] space-y-1">
-                        {selectedChild === 'all' ? (
-                            <div className="text-white/20 italic uppercase tracking-widest text-center mt-8">個別端末を選択してログを表示</div>
-                        ) : (
-                            (connectionLogs[selectedChild] || []).length > 0 ? (
-                                connectionLogs[selectedChild].map((msg, i) => (
-                                    <div key={i} className="flex gap-2">
-                                        <span className="text-blue-500 font-bold">[{new Date().toLocaleTimeString()}]</span>
-                                        <span className="text-white/60">{msg}</span>
-                                    </div>
-                                ))
-                            ) : (
-                                <div className="text-white/20 italic uppercase tracking-widest text-center mt-8">受信ログなし</div>
-                            )
-                        )}
-                    </div>
-                </section>
-
-           {/* Section: Remote Typing */}
-           <section>
-              <div className="flex items-center gap-3 mb-6">
-                <MessageSquare size={14} className="text-white/40" />
-                <h3 className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/40">リモートログ・インジェクション</h3>
-              </div>
-              <div className="flex gap-4">
-                  <input
-                    type="text"
-                    placeholder="コマンドまたはナラティブ文字列を入力..."
-                    className="flex-1 bg-white/5 border border-white/10 rounded-2xl px-6 py-4 outline-none focus:border-white/30 transition-all font-mono text-sm"
-                    value={logMessage}
-                    onChange={(e) => setLogMessage(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && injectLog()}
-                  />
-                  <button
-                    onClick={injectLog}
-                    className="px-8 bg-white text-black font-bold rounded-2xl uppercase tracking-widest text-[10px] hover:bg-white/90 transition-all"
-                  >
-                    送信
-                  </button>
-              </div>
-           </section>
-
-                {/* Section: Global Timer */}
-                <section>
-                    <div className="flex items-center gap-3 mb-6">
-                        <Clock size={14} className="text-white/40" />
-                        <h3 className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/40">一斉タイマー制御</h3>
-                    </div>
-                    <div className="bg-white/5 border border-white/10 rounded-2xl p-6">
-                        <div className="flex justify-between items-center mb-4">
-                            <span className="text-[10px] font-bold uppercase text-white/40">Duration (Minutes)</span>
-                            <span className="text-xs font-mono">{Math.floor(timerDuration / 60)}:00</span>
-                        </div>
-                        <input
-                            type="range" min="60" max="3600" step="60"
-                            className="w-full accent-white opacity-40 hover:opacity-100 transition-opacity mb-6"
-                            value={timerDuration}
-                            onChange={(e) => setTimerDuration(parseInt(e.target.value))}
-                        />
-                        <div className="flex gap-4">
-                            <button
-                                onClick={startGlobalTimer}
-                                className="flex-1 py-3 bg-red-500 text-white font-bold rounded-xl uppercase tracking-widest text-[10px] hover:bg-red-600 transition-all"
-                            >
-                                タイマー開始
-                            </button>
-                            <button
-                                onClick={stopGlobalTimer}
-                                className="flex-1 py-3 bg-white/5 border border-white/10 text-white/60 font-bold rounded-xl uppercase tracking-widest text-[10px] hover:bg-white/10 transition-all"
-                            >
-                                停止
-                            </button>
-                        </div>
-                    </div>
-                </section>
-
-           {/* Section: Remote Notification */}
-           <section>
-              <div className="flex items-center gap-3 mb-6">
-                <ShieldAlert size={14} className="text-white/40" />
-                <h3 className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/40">システム通知（画面右上）</h3>
-              </div>
-              <div className="flex gap-4">
-                  <input
-                    type="text"
-                    placeholder="通知内容を入力（5秒で消えます）..."
-                    className="flex-1 bg-white/5 border border-white/10 rounded-2xl px-6 py-4 outline-none focus:border-white/30 transition-all font-mono text-sm"
-                    value={notificationText}
-                    onChange={(e) => setNotificationText(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && sendNotification()}
-                  />
-                  <button
-                    onClick={sendNotification}
-                    className="px-8 bg-white text-black font-bold rounded-2xl uppercase tracking-widest text-[10px] hover:bg-white/90 transition-all"
-                  >
-                    通知
-                  </button>
-              </div>
-           </section>
-
-           {/* Section: Audio Control */}
-           <section>
-              <div className="flex items-center gap-3 mb-6">
-                <Zap size={14} className="text-white/40" />
-                <h3 className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/40">リモートオーディオ操作</h3>
-              </div>
-              <div className="flex gap-4">
-                  <input
-                    type="text"
-                    placeholder="Enter Audio URL (mp3/wav)..."
-                    className="flex-1 bg-white/5 border border-white/10 rounded-2xl px-6 py-4 outline-none focus:border-white/30 transition-all font-mono text-sm"
-                    value={audioUrl}
-                    onChange={(e) => setAudioUrl(e.target.value)}
-                  />
-                  <div className="flex gap-2">
+        {/* Main Interface: Grid and Master Controls */}
+        <main className="flex-1 flex flex-col gap-8 overflow-hidden">
+            {activeTab === 'fleet' ? (
+                <>
+                {/* Global Master Controls Bar */}
+                <div className="grid grid-cols-4 gap-4">
                     <button
-                        onClick={playAudio}
-                        className="px-6 bg-white text-black font-bold rounded-2xl uppercase tracking-widest text-[10px] hover:bg-white/90 transition-all"
+                        onClick={toggleFreeze}
+                        className={`flex flex-col items-center gap-3 p-6 rounded-[24px] border transition-all ${isFrozen ? 'bg-red-500 text-white border-red-400 shadow-xl' : 'bg-white/5 border-white/10 text-white/40 hover:bg-white/10'}`}
                     >
-                        再生
+                        {isFrozen ? <Unlock size={24} /> : <Lock size={24} />}
+                        <span className="text-[10px] font-bold uppercase tracking-widest">{isFrozen ? 'システム復旧' : '一斉凍結'}</span>
                     </button>
+
                     <button
-                        onClick={stopAudio}
-                        className="px-6 bg-red-500/10 text-red-500 border border-red-500/20 font-bold rounded-2xl uppercase tracking-widest text-[10px] hover:bg-red-500/20 transition-all"
+                        onClick={toggleCamera}
+                        className={`flex flex-col items-center gap-3 p-6 rounded-[24px] border transition-all ${cameraActive ? 'bg-purple-500 text-white border-purple-400 shadow-xl' : 'bg-white/5 border-white/10 text-white/40 hover:bg-white/10'}`}
                     >
-                        停止
+                        {cameraActive ? <VideoOff size={24} /> : <Video size={24} />}
+                        <span className="text-[10px] font-bold uppercase tracking-widest">{cameraActive ? '映像切断' : '映像一斉受信'}</span>
                     </button>
-                  </div>
-              </div>
-           </section>
-           </div>
 
-           {/* Section: Visual Monitoring */}
-           <section className="flex-1">
-              <div className="flex items-center gap-3 mb-6">
-                <Eye size={14} className="text-white/40" />
-                <h3 className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/40">セキュリティ・グリッド</h3>
-              </div>
-              <div className="grid grid-cols-2 gap-6 min-h-[320px]">
-                {connectedDevices.slice(0, 4).map((device, i) => (
-                    <div key={device.id} className="relative group bg-black/40 rounded-[32px] border border-white/5 overflow-hidden flex items-center justify-center aspect-video">
-                        <div className="absolute top-4 left-4 flex items-center gap-2 z-20">
-                             <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
-                             <span className="text-[8px] font-mono text-white/60 uppercase">Grid_Sector_{i+1} :: {device.id.substring(0, 6)}</span>
+                    <div className="col-span-2 glass-panel p-6 flex items-center gap-4">
+                        <div className="flex-1 flex flex-col gap-2">
+                             <div className="flex justify-between items-center px-1">
+                                <span className="text-[8px] font-bold text-white/20 uppercase tracking-[0.2em]">一斉タイマー設定</span>
+                                <span className="text-xs font-mono text-white/80">{Math.floor(timerDuration / 60)}:00</span>
+                             </div>
+                             <input
+                                type="range" min="60" max="3600" step="60"
+                                className="w-full accent-white opacity-40 hover:opacity-100 transition-opacity"
+                                value={timerDuration}
+                                onChange={(e) => setTimerDuration(parseInt(e.target.value))}
+                             />
                         </div>
+                        <button
+                            onClick={startGlobalTimer}
+                            className="p-4 bg-white text-black rounded-2xl hover:scale-105 transition-transform"
+                        >
+                            <Play size={20} fill="currentColor" />
+                        </button>
+                    </div>
+                </div>
 
-                        {deviceFrames[device.id] ? (
-                            <img src={deviceFrames[device.id]} className="w-full h-full object-cover opacity-80" alt="feed" />
-                        ) : (
-                            <div className="flex flex-col items-center gap-3">
-                                <div className="text-[10px] text-white/10 uppercase tracking-widest font-bold">信号待機中</div>
-                                {cameraActive && (
-                                    <div className="w-8 h-1 bg-white/5 rounded-full overflow-hidden">
-                                        <motion.div
-                                            initial={{ x: '-100%' }}
-                                            animate={{ x: '100%' }}
-                                            transition={{ repeat: Infinity, duration: 1.5 }}
-                                            className="w-full h-full bg-purple-500/40"
-                                        />
+                {/* Central Workspace: Messaging and Monitoring */}
+                <div className="flex-1 grid grid-cols-12 gap-8 overflow-hidden">
+                    <div className="col-span-8 flex flex-col gap-6">
+                        {/* Security Monitor Grid */}
+                        <div className="flex-1 bg-black rounded-[32px] border border-white/5 overflow-hidden relative group">
+                            <div className="absolute inset-0 pointer-events-none z-30 opacity-20 bg-[linear-gradient(rgba(18,16,16,0)_50%,rgba(0,0,0,0.25)_50%),linear-gradient(90deg,rgba(255,0,0,0.06),rgba(0,255,0,0.02),rgba(0,0,255,0.06))] bg-[length:100%_2px,3px_100%]" />
+
+                            <div className="absolute inset-0 p-6 grid grid-cols-2 gap-4 overflow-y-auto">
+                                {connectedDevices.map((device, i) => (
+                                    <div key={device.id} className="relative bg-white/5 rounded-2xl border border-white/10 aspect-video overflow-hidden flex items-center justify-center">
+                                         {deviceFrames[device.id] ? (
+                                             <img src={deviceFrames[device.id]} className="w-full h-full object-cover grayscale opacity-80" alt="feed" />
+                                         ) : (
+                                             <div className="text-[8px] font-black text-white/10 uppercase tracking-[0.4em]">Signal_Wait</div>
+                                         )}
+                                         <div className="absolute top-2 left-2 px-2 py-0.5 bg-black/60 rounded font-mono text-[8px] text-white/60">CAM_{i+1}</div>
                                     </div>
+                                ))}
+                                {connectedDevices.length === 0 && (
+                                     <div className="col-span-2 flex flex-col items-center justify-center gap-4 opacity-10">
+                                         <Camera size={64} />
+                                         <span className="text-[10px] font-black uppercase tracking-[0.5em]">監視グリッド待機中</span>
+                                     </div>
                                 )}
                             </div>
-                        )}
-                        <div className="absolute inset-0 pointer-events-none border-[12px] border-black/20 z-10" />
+                        </div>
+
+                        {/* Quick Message Bar */}
+                        <div className="glass-panel p-6 flex gap-4 items-center">
+                             <div className="p-3 bg-white/5 rounded-xl text-white/40">
+                                <MessageSquare size={20} />
+                             </div>
+                             <input
+                                type="text"
+                                placeholder="一斉メッセージ送信（ナラティブ文字列）..."
+                                className="flex-1 bg-transparent border-none outline-none text-sm font-mono tracking-wider"
+                                value={notificationText}
+                                onChange={(e) => setNotificationText(e.target.value)}
+                                onKeyDown={(e) => e.key === 'Enter' && sendNotification()}
+                             />
+                             <button
+                                onClick={sendNotification}
+                                className="p-4 bg-white/10 text-white rounded-2xl hover:bg-white/20 transition-all"
+                             >
+                                <Send size={18} />
+                             </button>
+                        </div>
                     </div>
-                ))}
-                {connectedDevices.length === 0 && (
-                     <div className="col-span-2 flex items-center justify-center border-2 border-dashed border-white/5 rounded-[32px] text-white/5 uppercase tracking-[0.4em] font-black text-2xl">
-                         デバイス未接続
-                     </div>
-                )}
-              </div>
-           </section>
+
+                    {/* Right Info Panel */}
+                    <div className="col-span-4 flex flex-col gap-6">
+                        <section className="glass-panel p-6 flex-1 flex flex-col">
+                            <div className="flex items-center gap-2 mb-6">
+                                <Users size={14} className="text-white/40" />
+                                <span className="text-[10px] font-bold uppercase tracking-widest text-white/40">端末ステータス</span>
+                            </div>
+                            <div className="flex-1 overflow-y-auto space-y-4">
+                                <DeviceStats devices={connectedDevices} />
+                            </div>
+                        </section>
+
+                        <section className="glass-panel p-6 h-48 flex flex-col">
+                            <div className="flex items-center gap-2 mb-4">
+                                <Monitor size={14} className="text-white/40" />
+                                <span className="text-[10px] font-bold uppercase tracking-widest text-white/40">個別ログ</span>
+                            </div>
+                            <div className="flex-1 bg-black/20 rounded-xl p-3 overflow-y-auto font-mono text-[10px] text-white/40">
+                                {selectedChild === 'all' ? (
+                                    <div className="h-full flex items-center justify-center italic opacity-40">SELECT_UNIT_TO_VIEW_LOGS</div>
+                                ) : (
+                                    (connectionLogs[selectedChild] || []).map((msg, i) => (
+                                        <div key={i} className="mb-1">{msg}</div>
+                                    ))
+                                )}
+                            </div>
+                        </section>
+                    </div>
+                </div>
+                </>
+            ) : (
+                <div className="flex-1 flex flex-col items-center justify-center border-2 border-dashed border-white/5 rounded-[48px]">
+                     <div className="text-4xl font-black text-white/5 uppercase tracking-[1rem] mb-4">PERFORMANCE_PANEL</div>
+                     <p className="text-[10px] text-white/20 uppercase tracking-[0.5rem] font-bold">公演用カスタムコントロール（開発中）</p>
+                </div>
+            )}
         </main>
-        </>
-        )}
       </div>
     </div>
   );

@@ -2,7 +2,7 @@ const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('electron', {
   send: (channel, data) => {
-    const validChannels = ['SEND_REMOTE_COMMAND', 'GET_LOCAL_IP', 'APPROVE_PAIRING', 'REJECT_PAIRING'];
+    const validChannels = ['SEND_REMOTE_COMMAND', 'GET_LOCAL_IP', 'APPROVE_PAIRING', 'REJECT_PAIRING', 'REMOVE_DEVICE'];
     if (validChannels.includes(channel)) {
       ipcRenderer.send(channel, data);
     }

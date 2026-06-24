@@ -9,7 +9,9 @@ import {
   Clock,
   Power,
   ShieldAlert,
-  Shield
+  Shield,
+  Eye,
+  EyeOff
 } from 'lucide-react';
 import { PLUGINS, getPluginById } from './plugins/registry';
 import { useRemoteControl } from './hooks/useRemoteControl';
@@ -22,6 +24,7 @@ const App: React.FC = () => {
   const [showExitModal, setShowExitModal] = useState(false);
   const [showSetup, setShowSetup] = useState(!localStorage.getItem('masterUrl'));
   const [exitPassword, setExitPassword] = useState('');
+  const [showPasswordRaw, setShowPasswordRaw] = useState(false);
   const [passwordError, setPasswordError] = useState(false);
   const [masterUrl, setMasterUrl] = useState<string | null>(localStorage.getItem('masterUrl'));
   const [isShaking, setIsShaking] = useState(false);
@@ -461,17 +464,25 @@ const App: React.FC = () => {
               <h2 className="text-lg font-bold mb-2 tracking-widest uppercase">システム制限</h2>
               <p className="text-xs text-white/40 mb-8 uppercase tracking-tighter">許可された担当者のみアクセス可能です</p>
 
-              <input
-                type="password"
-                autoFocus
-                className={`w-full bg-white/5 border rounded-xl px-4 py-4 text-center outline-none mb-2 focus:border-white/30 transition-all text-xl tracking-[0.5em] ${passwordError ? 'border-red-500' : 'border-white/10'}`}
-                value={exitPassword}
-                onChange={(e) => {
-                    setExitPassword(e.target.value);
-                    if (passwordError) setPasswordError(false);
-                }}
-                onKeyDown={(e) => e.key === 'Enter' && handleVerifyPassword()}
-              />
+              <div className="relative mb-2">
+                <input
+                    type={showPasswordRaw ? "text" : "password"}
+                    autoFocus
+                    className={`w-full bg-white/5 border rounded-xl px-4 py-4 text-center outline-none focus:border-white/30 transition-all text-xl tracking-[0.5em] ${passwordError ? 'border-red-500' : 'border-white/10'}`}
+                    value={exitPassword}
+                    onChange={(e) => {
+                        setExitPassword(e.target.value);
+                        if (passwordError) setPasswordError(false);
+                    }}
+                    onKeyDown={(e) => e.key === 'Enter' && handleVerifyPassword()}
+                />
+                <button
+                    onClick={() => setShowPasswordRaw(!showPasswordRaw)}
+                    className="absolute right-4 top-1/2 -translate-y-1/2 p-2 text-white/20 hover:text-white transition-colors"
+                >
+                    {showPasswordRaw ? <EyeOff size={16} /> : <Eye size={16} />}
+                </button>
+              </div>
 
               <div className="h-4 mb-4">
                   {passwordError && (

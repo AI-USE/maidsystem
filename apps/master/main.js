@@ -132,6 +132,13 @@ ipcMain.on('REJECT_PAIRING', (event, deviceId) => {
     }
 });
 
+ipcMain.on('REMOVE_DEVICE', (event, deviceId) => {
+    if (devices.has(deviceId)) {
+        devices.delete(deviceId);
+        updateDeviceList();
+    }
+});
+
 ipcMain.on('SEND_REMOTE_COMMAND', (event, { targetId, command }) => {
   if (targetId === 'all') {
     io.emit('ADMIN_REMOTE_CTRL', command);
