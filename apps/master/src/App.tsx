@@ -13,7 +13,8 @@ import {
   MessageSquare,
   AlertCircle,
   Sliders,
-  Monitor
+  Monitor,
+  Clock
 } from 'lucide-react';
 import { DeviceStats } from './components/DeviceStats';
 

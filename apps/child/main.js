@@ -27,11 +27,11 @@ function createWindow() {
   });
 
   const isDev = process.env.NODE_ENV === 'development';
-  const startUrl = isDev
-    ? (process.env.VITE_DEV_SERVER_URL || 'http://localhost:5173')
-    : `file://${path.join(__dirname, 'dist/index.html')}`;
-
-  mainWindow.loadURL(startUrl);
+  if (isDev) {
+    mainWindow.loadURL(process.env.VITE_DEV_SERVER_URL || 'http://localhost:5173');
+  } else {
+    mainWindow.loadFile(path.join(__dirname, 'dist/index.html'));
+  }
 
   mainWindow.on('close', (e) => {
     if (!isAllowExit) {

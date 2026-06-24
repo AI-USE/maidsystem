@@ -21,11 +21,11 @@ function createWindow() {
   });
 
   const isDev = process.env.NODE_ENV === 'development';
-  const startUrl = isDev
-    ? (process.env.VITE_DEV_SERVER_URL || 'http://localhost:5174')
-    : `file://${path.join(__dirname, 'dist/index.html')}`;
-
-  mainWindow.loadURL(startUrl);
+  if (isDev) {
+    mainWindow.loadURL(process.env.VITE_DEV_SERVER_URL || 'http://localhost:5174');
+  } else {
+    mainWindow.loadFile(path.join(__dirname, 'dist/index.html'));
+  }
 }
 
 const os = require('os');
@@ -105,13 +105,33 @@ ipcMain.on('SEND_REMOTE_COMMAND', (event, { targetId, command }) => {
 
 // UDP Discovery Listener
 const udpSocket = dgram.createSocket('udp4');
+udpSocket.on('error', (err) => {
+  console.error(`UDP socket error:\n${err.stack}`);
+  udpSocket.close();
+});
+
 udpSocket.on('message', (msg, rinfo) => {
   if (msg.toString() === 'MAD_OS_DISCOVERY') {
     const ack = Buffer.from('MAD_OS_MASTER_ACK');
     udpSocket.send(ack, rinfo.port, rinfo.address);
   }
 });
-udpSocket.bind(3031);
+
+try {
+    udpSocket.bind(3031, () => {
+        console.log('UDP Discovery Listener bound to port 3031');
+    });
+} catch (err) {
+    console.error('Failed to bind UDP socket:', err);
+}
+
+server.on('error', (e) => {
+  if (e.code === 'EADDRINUSE') {
+    console.error('Port 3030 is already in use');
+  } else {
+    console.error('Server error:', e);
+  }
+});
 
 server.listen(3030, () => {
   console.log('Master Server listening on port 3030');
