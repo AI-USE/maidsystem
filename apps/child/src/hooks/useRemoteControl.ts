@@ -6,6 +6,7 @@ export const useRemoteControl = (masterUrl: string | null) => {
   const [socket, setSocket] = useState<Socket | null>(null);
   const [lastCommand, setLastCommand] = useState<RemoteCommand | null>(null);
   const [isConnected, setIsConnected] = useState(false);
+  const [isPaired, setIsPaired] = useState(localStorage.getItem('isPaired') === 'true');
 
   useEffect(() => {
     if (!masterUrl) return;
@@ -20,6 +21,20 @@ export const useRemoteControl = (masterUrl: string | null) => {
     newSocket.on('connect', () => {
       setIsConnected(true);
       console.log('Connected to Master OS');
+      // If we are not paired, we should request pairing immediately
+      if (!isPaired) {
+          newSocket.emit('REQUEST_PAIRING', { name: `DEVICE_${newSocket.id.substring(0, 4)}` });
+      }
+    });
+
+    newSocket.on('PAIRING_RESULT', (data: { success: boolean }) => {
+        if (data.success) {
+            setIsPaired(true);
+            localStorage.setItem('isPaired', 'true');
+        } else {
+            setIsPaired(false);
+            localStorage.removeItem('isPaired');
+        }
     });
 
     newSocket.on('disconnect', () => {
@@ -39,10 +54,10 @@ export const useRemoteControl = (masterUrl: string | null) => {
   }, [masterUrl]);
 
   const emit = (event: string, data: any) => {
-      if (socket) {
+      if (socket && isPaired) {
           socket.emit(event, data);
       }
   };
 
-  return { isConnected, lastCommand, socket, emit };
+  return { isConnected, isPaired, lastCommand, socket, emit };
 };

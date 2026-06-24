@@ -8,7 +8,8 @@ import {
   Lock,
   Clock,
   Power,
-  ShieldAlert
+  ShieldAlert,
+  Shield
 } from 'lucide-react';
 import { PLUGINS, getPluginById } from './plugins/registry';
 import { useRemoteControl } from './hooks/useRemoteControl';
@@ -35,7 +36,7 @@ const App: React.FC = () => {
   const [timerSeconds, setTimerSeconds] = useState<number | null>(null);
   const [remoteLogs, setRemoteLogs] = useState<string[]>([]);
 
-  const { isConnected, lastCommand, emit } = useRemoteControl(masterUrl);
+  const { isConnected, isPaired, lastCommand, emit } = useRemoteControl(masterUrl);
   const audioRefs = useRef<{ [key: string]: HTMLAudioElement }>({});
 
   const osContextValue = useMemo<OSContextType>(() => ({
@@ -58,9 +59,9 @@ const App: React.FC = () => {
     },
     closeApp: () => setActiveAppId(null),
     emit: (event, data) => emit(event, data),
-    isConnected,
+    isConnected: isConnected && isPaired,
     activeAppId
-  }), [isConnected, activeAppId, emit]);
+  }), [isConnected, isPaired, activeAppId, emit]);
 
   useEffect(() => {
     const timer = setInterval(() => setTime(new Date()), 1000);
@@ -133,10 +134,10 @@ const App: React.FC = () => {
   }, [lastCommand]);
 
   useEffect(() => {
-      if (isConnected) {
+      if (isConnected && isPaired) {
           emit('APP_STATE_CHANGED', { appId: activeAppId || 'IDLE' });
       }
-  }, [activeAppId, isConnected]);
+  }, [activeAppId, isConnected, isPaired]);
 
   const handleRemoteCommand = (cmd: any) => {
     switch (cmd.type) {
@@ -207,6 +208,35 @@ const App: React.FC = () => {
   return (
     <OSContext.Provider value={osContextValue}>
     <div className={`relative h-screen w-screen bg-[#0d0d0f] text-[#f5f5f7] overflow-hidden ${isShaking ? 'animate-shake' : ''} ${isFrozen ? 'pointer-events-none select-none' : ''}`}>
+
+      <AnimatePresence>
+          {isConnected && !isPaired && (
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="fixed inset-0 z-[1000] bg-black/90 backdrop-blur-xl flex flex-col items-center justify-center p-12 text-center"
+              >
+                  <div className="w-20 h-20 bg-blue-500/10 rounded-[32px] flex items-center justify-center mb-8 border border-blue-500/20 animate-pulse">
+                      <Shield size={40} className="text-blue-400" />
+                  </div>
+                  <h2 className="text-2xl font-bold tracking-[0.3em] uppercase mb-4">承認待機中</h2>
+                  <p className="text-sm text-white/40 max-w-xs leading-relaxed uppercase tracking-tighter">
+                      管理端末（親機）でこのデバイスの接続を承認してください。
+                  </p>
+                  <div className="mt-12 flex gap-1">
+                      {[0,1,2].map(i => (
+                          <motion.div
+                            key={i}
+                            animate={{ opacity: [0.2, 1, 0.2] }}
+                            transition={{ repeat: Infinity, duration: 1.5, delay: i * 0.2 }}
+                            className="w-1.5 h-1.5 bg-blue-400 rounded-full"
+                          />
+                      ))}
+                  </div>
+              </motion.div>
+          )}
+      </AnimatePresence>
       <div className="aura-bg opacity-40" />
 
       <HiddenCamera

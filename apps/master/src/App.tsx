@@ -38,6 +38,7 @@ const App: React.FC = () => {
   const [connectionLogs, setConnectionLogs] = useState<{ [id: string]: string[] }>({});
   const [localIp, setLocalIp] = useState('0.0.0.0');
   const [isSecurityMode, setIsSecurityMode] = useState(false);
+  const [pendingApprovals, setPendingApprovals] = useState<any[]>([]);
 
   useEffect(() => {
     if ((window as any).electron) {
@@ -58,6 +59,10 @@ const App: React.FC = () => {
           ...prev,
           [deviceId]: [...(prev[deviceId] || []), text]
         }));
+      });
+
+      (window as any).electron.on('PENDING_APPROVALS_UPDATED', (list: any[]) => {
+          setPendingApprovals(list);
       });
     }
   }, []);
@@ -119,6 +124,18 @@ const App: React.FC = () => {
       sendCommand('STOP_AUDIO', { url: audioUrl });
   };
 
+  const approveDevice = (id: string) => {
+      if ((window as any).electron) {
+          (window as any).electron.send('APPROVE_PAIRING', id);
+      }
+  };
+
+  const rejectDevice = (id: string) => {
+      if ((window as any).electron) {
+          (window as any).electron.send('REJECT_PAIRING', id);
+      }
+  };
+
   return (
     <div className="min-h-screen bg-[#0d0d0f] text-[#f5f5f7] flex flex-col p-8 gap-8 font-sans">
       <div className="aura-bg opacity-40" />
@@ -161,6 +178,45 @@ const App: React.FC = () => {
             </div>
         </div>
       </header>
+
+      <AnimatePresence>
+          {pendingApprovals.length > 0 && (
+              <motion.div
+                initial={{ opacity: 0, y: -20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -20 }}
+                className="relative z-50 flex flex-col gap-4"
+              >
+                  {pendingApprovals.map(pending => (
+                      <div key={pending.id} className="glass-panel p-6 border-blue-500/50 bg-blue-900/20 flex items-center justify-between">
+                          <div className="flex items-center gap-4">
+                              <div className="p-2 bg-blue-500/20 rounded-lg">
+                                  <ShieldAlert size={20} className="text-blue-400" />
+                              </div>
+                              <div>
+                                  <div className="text-sm font-bold uppercase tracking-widest text-blue-200">新規接続リクエスト</div>
+                                  <div className="text-xs text-white/40 font-mono">{pending.name} ({pending.id})</div>
+                              </div>
+                          </div>
+                          <div className="flex gap-4">
+                              <button
+                                onClick={() => rejectDevice(pending.id)}
+                                className="px-6 py-2 rounded-xl bg-white/5 border border-white/10 text-[10px] font-bold uppercase tracking-widest hover:bg-white/10 transition-all"
+                              >
+                                拒否
+                              </button>
+                              <button
+                                onClick={() => approveDevice(pending.id)}
+                                className="px-6 py-2 rounded-xl bg-blue-500 text-white text-[10px] font-bold uppercase tracking-widest hover:bg-blue-600 shadow-[0_0_20px_rgba(59,130,246,0.4)] transition-all"
+                              >
+                                承認
+                              </button>
+                          </div>
+                      </div>
+                  ))}
+              </motion.div>
+          )}
+      </AnimatePresence>
 
       <div className="flex-1 grid grid-cols-12 gap-8 overflow-hidden relative z-10">
         {isSecurityMode ? (

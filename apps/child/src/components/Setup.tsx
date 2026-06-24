@@ -48,6 +48,9 @@ export const Setup: React.FC<SetupProps> = ({ onComplete }) => {
           localStorage.setItem('pass_event', passwords.event);
           localStorage.setItem('pass_admin', passwords.admin);
 
+          // Clear pairing on fresh setup to force re-approval if IP changed
+          localStorage.removeItem('isPaired');
+
           if ((window as any).electron) {
               (window as any).electron.send('UPDATE_CONFIG', {
                   passwords,

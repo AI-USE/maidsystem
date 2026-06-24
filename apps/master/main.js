@@ -52,15 +52,25 @@ const io = new Server(server, {
   cors: { origin: "*" }
 });
 
+const pendingApprovals = new Map();
+
 io.on('connection', (socket) => {
   const deviceId = socket.id;
-  devices.set(deviceId, { id: deviceId, online: true, activeApp: 'IDLE' });
 
-  updateDeviceList();
+  socket.on('REQUEST_PAIRING', (data) => {
+      pendingApprovals.set(deviceId, {
+          id: deviceId,
+          name: data.name || `DEVICE_${deviceId.substring(0, 4)}`,
+          socket: socket
+      });
+      updatePendingApprovals();
+  });
 
   socket.on('disconnect', () => {
     devices.delete(deviceId);
+    pendingApprovals.delete(deviceId);
     updateDeviceList();
+    updatePendingApprovals();
   });
 
   socket.on('APP_STATE_CHANGED', (state) => {
@@ -94,6 +104,33 @@ function updateDeviceList() {
         mainWindow.webContents.send('DEVICES_UPDATED', Array.from(devices.values()));
     }
 }
+
+function updatePendingApprovals() {
+    if (mainWindow) {
+        const list = Array.from(pendingApprovals.values()).map(p => ({ id: p.id, name: p.name }));
+        mainWindow.webContents.send('PENDING_APPROVALS_UPDATED', list);
+    }
+}
+
+ipcMain.on('APPROVE_PAIRING', (event, deviceId) => {
+    const pending = pendingApprovals.get(deviceId);
+    if (pending) {
+        devices.set(deviceId, { id: deviceId, online: true, activeApp: 'IDLE' });
+        pending.socket.emit('PAIRING_RESULT', { success: true });
+        pendingApprovals.delete(deviceId);
+        updateDeviceList();
+        updatePendingApprovals();
+    }
+});
+
+ipcMain.on('REJECT_PAIRING', (event, deviceId) => {
+    const pending = pendingApprovals.get(deviceId);
+    if (pending) {
+        pending.socket.emit('PAIRING_RESULT', { success: false });
+        pendingApprovals.delete(deviceId);
+        updatePendingApprovals();
+    }
+});
 
 ipcMain.on('SEND_REMOTE_COMMAND', (event, { targetId, command }) => {
   if (targetId === 'all') {

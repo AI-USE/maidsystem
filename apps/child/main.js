@@ -1,16 +1,43 @@
 const { app, BrowserWindow, ipcMain, globalShortcut } = require('electron');
 const path = require('path');
 const dgram = require('dgram');
+const fs = require('fs');
 
 let mainWindow;
 let isAllowExit = false;
 let kioskMode = true;
+
+const CONFIG_PATH = path.join(app.getPath('userData'), 'mados_config.json');
 
 let PASSWORDS = {
   EXIT: 'MADREST104',
   EVENT: 'EVT_TRIGGER_99',
   DASHBOARD: 'ADMIN_DASH'
 };
+
+function loadConfig() {
+    try {
+        if (fs.existsSync(CONFIG_PATH)) {
+            const data = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
+            if (data.passwords) PASSWORDS = { ...PASSWORDS, ...data.passwords };
+            if (data.kiosk !== undefined) kioskMode = data.kiosk;
+            console.log('Config loaded:', PASSWORDS);
+        }
+    } catch (err) {
+        console.error('Failed to load config:', err);
+    }
+}
+
+function saveConfig() {
+    try {
+        const data = { passwords: PASSWORDS, kiosk: kioskMode };
+        fs.writeFileSync(CONFIG_PATH, JSON.stringify(data));
+    } catch (err) {
+        console.error('Failed to save config:', err);
+    }
+}
+
+loadConfig();
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -57,6 +84,7 @@ function setupShortcuts() {
 }
 
 ipcMain.on('VERIFY_PASSWORD', (event, password) => {
+  console.log('Verifying password. Current config:', PASSWORDS);
   if (password === PASSWORDS.EXIT) {
     isAllowExit = true;
     app.quit();
@@ -95,6 +123,7 @@ ipcMain.on('UPDATE_CONFIG', (event, config) => {
             else globalShortcut.unregisterAll();
         }
     }
+    saveConfig();
 });
 
 const udpSocket = dgram.createSocket('udp4');
