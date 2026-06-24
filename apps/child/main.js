@@ -1,18 +1,24 @@
-const { app, BrowserWindow, ipcMain } = require('electron');
+const { app, BrowserWindow, ipcMain, globalShortcut } = require('electron');
 const path = require('path');
 const dgram = require('dgram');
 
 let mainWindow;
 let isAllowExit = false;
-const EXIT_PASSWORD = 'MADREST104';
+let kioskMode = true;
+
+const PASSWORDS = {
+  EXIT: 'MADREST104',
+  EVENT: 'EVT_TRIGGER_99',
+  DASHBOARD: 'ADMIN_DASH'
+};
 
 function createWindow() {
   mainWindow = new BrowserWindow({
     fullscreen: true,
-    kiosk: true,
+    kiosk: kioskMode,
     alwaysOnTop: true,
     frame: false,
-    backgroundColor: '#000000',
+    backgroundColor: '#0f0f11',
     webPreferences: {
       nodeIntegration: false,
       contextBridge: true,
@@ -37,15 +43,42 @@ function createWindow() {
   if (isDev) {
     mainWindow.webContents.openDevTools();
   }
+
+  setupShortcuts();
 }
 
-ipcMain.on('VERIFY_EXIT_PASSWORD', (event, password) => {
-  if (password === EXIT_PASSWORD) {
+function setupShortcuts() {
+    if (kioskMode) {
+        // Disable common escape shortcuts
+        globalShortcut.register('Alt+F4', () => console.log('Shortcut blocked: Alt+F4'));
+        globalShortcut.register('CommandOrControl+W', () => console.log('Shortcut blocked: Ctrl+W'));
+        // We can't easily block Ctrl+Alt+Del from Electron level, but kiosk mode helps on Windows
+    }
+}
+
+ipcMain.on('VERIFY_PASSWORD', (event, password) => {
+  if (password === PASSWORDS.EXIT) {
     isAllowExit = true;
     app.quit();
+  } else if (password === PASSWORDS.EVENT) {
+    event.reply('PASSWORD_ACTION', 'TRIGGER_EVENT');
+  } else if (password === PASSWORDS.DASHBOARD) {
+    event.reply('PASSWORD_ACTION', 'SHOW_SETUP');
   } else {
-    event.reply('EXIT_PASSWORD_RESULT', false);
+    event.reply('PASSWORD_RESULT', false);
   }
+});
+
+ipcMain.on('SET_KIOSK', (event, enabled) => {
+    kioskMode = enabled;
+    if (mainWindow) {
+        mainWindow.setKiosk(enabled);
+        if (enabled) {
+            setupShortcuts();
+        } else {
+            globalShortcut.unregisterAll();
+        }
+    }
 });
 
 const udpSocket = dgram.createSocket('udp4');
@@ -74,4 +107,8 @@ app.whenReady().then(createWindow);
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
+});
+
+app.on('will-quit', () => {
+    globalShortcut.unregisterAll();
 });

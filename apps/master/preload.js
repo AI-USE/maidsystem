@@ -2,18 +2,13 @@ const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('electron', {
   send: (channel, data) => {
-    const validChannels = ['VERIFY_PASSWORD', 'START_DISCOVERY', 'SET_KIOSK'];
+    const validChannels = ['SEND_REMOTE_COMMAND'];
     if (validChannels.includes(channel)) {
       ipcRenderer.send(channel, data);
     }
   },
   on: (channel, func) => {
-    const validChannels = [
-        'SHOW_EXIT_MODAL',
-        'PASSWORD_RESULT',
-        'PASSWORD_ACTION',
-        'MASTER_FOUND'
-    ];
+    const validChannels = ['DEVICES_UPDATED', 'CAMERA_FRAME_RECEIVED'];
     if (validChannels.includes(channel)) {
       ipcRenderer.on(channel, (event, ...args) => func(...args));
     }

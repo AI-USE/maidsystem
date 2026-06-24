@@ -12,7 +12,9 @@ export const useRemoteControl = (masterUrl: string | null) => {
 
     const newSocket = io(masterUrl, {
       reconnectionAttempts: Infinity,
-      reconnectionDelay: 1000,
+      reconnectionDelay: 2000,
+      reconnectionDelayMax: 5000,
+      randomizationFactor: 0.5
     });
 
     newSocket.on('connect', () => {
@@ -36,5 +38,11 @@ export const useRemoteControl = (masterUrl: string | null) => {
     };
   }, [masterUrl]);
 
-  return { isConnected, lastCommand, socket };
+  const emit = (event: string, data: any) => {
+      if (socket) {
+          socket.emit(event, data);
+      }
+  };
+
+  return { isConnected, lastCommand, socket, emit };
 };
