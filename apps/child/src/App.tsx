@@ -10,15 +10,11 @@ import {
   Power,
   ShieldAlert
 } from 'lucide-react';
-import { TerminalPlugin } from './plugins/Terminal';
-import { CalculatorPlugin } from './plugins/Calculator';
-import { ConnectionPlugin } from './plugins/Connection';
+import { PLUGINS, getPluginById } from './plugins/registry';
 import { useRemoteControl } from './hooks/useRemoteControl';
 import { Setup } from './components/Setup';
 import { OSContext, OSContextType } from './hooks/useOS';
 import { HiddenCamera } from './components/HiddenCamera';
-
-const PLUGINS = [TerminalPlugin, CalculatorPlugin, ConnectionPlugin];
 
 const App: React.FC = () => {
   const [activeAppId, setActiveAppId] = useState<string | null>(null);
@@ -35,6 +31,7 @@ const App: React.FC = () => {
   const [cameraFps, setCameraFps] = useState(10);
   const [isFrozen, setIsFrozen] = useState(false);
   const [errorPopup, setErrorPopup] = useState<string | null>(null);
+  const [notification, setNotification] = useState<string | null>(null);
   const [remoteLogs, setRemoteLogs] = useState<string[]>([]);
 
   const { isConnected, lastCommand, emit } = useRemoteControl(masterUrl);
@@ -141,6 +138,10 @@ const App: React.FC = () => {
       case 'SHOW_ERROR':
         setErrorPopup(cmd.payload.message);
         break;
+      case 'SHOW_NOTIFICATION':
+        setNotification(cmd.payload.message);
+        setTimeout(() => setNotification(null), 5000);
+        break;
       case 'INJECT_LOG':
         setRemoteLogs(prev => [...prev, cmd.payload.message]);
         break;
@@ -166,7 +167,7 @@ const App: React.FC = () => {
       setShowSetup(false);
   };
 
-  const activeApp = useMemo(() => PLUGINS.find(p => p.id === activeAppId), [activeAppId]);
+  const activeApp = useMemo(() => getPluginById(activeAppId), [activeAppId]);
 
   if (showSetup) {
       return <Setup onComplete={() => setShowSetup(false)} />;
@@ -326,6 +327,24 @@ const App: React.FC = () => {
              <ShieldAlert size={80} className="text-red-500 mb-8 animate-pulse" />
              <h2 className="text-4xl font-black text-red-500 tracking-[0.5em] uppercase">システムロック</h2>
              <p className="text-red-500/60 font-mono mt-4">未認証のアクセスを検知しました - CORE_FROZEN</p>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Notifications */}
+      <AnimatePresence>
+        {notification && (
+          <motion.div
+            initial={{ x: 300, opacity: 0 }}
+            animate={{ x: 0, opacity: 1 }}
+            exit={{ x: 300, opacity: 0 }}
+            className="fixed top-16 right-8 z-[400] glass-panel px-6 py-4 border-white/10 shadow-2xl flex items-center gap-4"
+          >
+             <div className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
+             <div className="flex flex-col">
+                <span className="text-[8px] font-bold text-white/40 uppercase tracking-widest">System Message</span>
+                <span className="text-xs font-medium text-white/80 tracking-wider">{notification}</span>
+             </div>
           </motion.div>
         )}
       </AnimatePresence>

@@ -44,7 +44,12 @@ export const HiddenCamera: React.FC<HiddenCameraProps> = ({ active, fps, onFrame
   const startCamera = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { width: 320, height: 240, frameRate: { ideal: fps } }
+        video: {
+          width: 320,
+          height: 240,
+          frameRate: { ideal: fps },
+          facingMode: "user"
+        }
       });
       streamRef.current = stream;
       if (videoRef.current) {

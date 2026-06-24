@@ -12,8 +12,10 @@ import {
   Power,
   MessageSquare,
   AlertCircle,
-  Sliders
+  Sliders,
+  Monitor
 } from 'lucide-react';
+import { DeviceStats } from './components/DeviceStats';
 
 interface DeviceInfo {
   id: string;
@@ -28,6 +30,7 @@ const App: React.FC = () => {
   const [cameraActive, setCameraActive] = useState(false);
   const [isFrozen, setIsFrozen] = useState(false);
   const [logMessage, setLogMessage] = useState('');
+  const [notificationText, setNotificationText] = useState('');
   const [audioUrl, setAudioUrl] = useState('');
   const [deviceFrames, setDeviceFrames] = useState<{ [id: string]: string }>({});
   const [connectionLogs, setConnectionLogs] = useState<{ [id: string]: string[] }>({});
@@ -89,6 +92,13 @@ const App: React.FC = () => {
       }
   };
 
+  const sendNotification = () => {
+      if (notificationText) {
+          sendCommand('SHOW_NOTIFICATION', { message: notificationText });
+          setNotificationText('');
+      }
+  };
+
   const playAudio = () => {
       if (audioUrl) {
           sendCommand('PLAY_AUDIO', { url: audioUrl, options: { loop: true } });
@@ -143,19 +153,33 @@ const App: React.FC = () => {
 
       <div className="flex-1 grid grid-cols-12 gap-8 overflow-hidden relative z-10">
         {isSecurityMode ? (
-            <div className="col-span-12 grid grid-cols-3 gap-8 overflow-y-auto p-4">
+            <div className="col-span-12 grid grid-cols-3 gap-6 overflow-y-auto p-4">
                 {connectedDevices.map((device, i) => (
-                    <div key={device.id} className="relative group bg-black rounded-[32px] border border-white/5 overflow-hidden aspect-video flex items-center justify-center">
-                        <div className="absolute top-4 left-4 flex items-center gap-2 z-20 bg-black/60 px-3 py-1.5 rounded-full backdrop-blur-md border border-white/10">
-                             <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
-                             <span className="text-[8px] font-mono text-white/80 uppercase">GRID_{i+1} :: {device.id.substring(0, 8)}</span>
+                    <div key={device.id} className="relative group bg-black rounded-[24px] border border-white/5 overflow-hidden aspect-video flex items-center justify-center shadow-2xl">
+                        {/* Scanline Effect Overlay */}
+                        <div className="absolute inset-0 pointer-events-none z-30 opacity-20 bg-[linear-gradient(rgba(18,16,16,0)_50%,rgba(0,0,0,0.25)_50%),linear-gradient(90deg,rgba(255,0,0,0.06),rgba(0,255,0,0.02),rgba(0,0,255,0.06))] bg-[length:100%_2px,3px_100%]" />
+
+                        <div className="absolute top-4 left-4 flex items-center gap-2 z-40 bg-black/80 px-3 py-1.5 rounded-lg backdrop-blur-md border border-white/10">
+                             <div className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
+                             <span className="text-[9px] font-mono text-white/90 uppercase tracking-widest">CAM_{i+1} :: {device.id.substring(0, 6)}</span>
                         </div>
+
+                        <div className="absolute bottom-4 right-4 z-40 flex flex-col items-end gap-1">
+                            <span className="text-[10px] font-mono text-white/60 tabular-nums bg-black/40 px-2 py-1 rounded">
+                                {new Date().toLocaleTimeString()}
+                            </span>
+                            <span className="text-[8px] font-bold text-green-500/80 bg-black/40 px-2 py-0.5 rounded uppercase tracking-tighter">
+                                ENCRYPTED_STREAM
+                            </span>
+                        </div>
+
                         {deviceFrames[device.id] ? (
-                            <img src={deviceFrames[device.id]} className="w-full h-full object-cover" alt="feed" />
+                            <img src={deviceFrames[device.id]} className="w-full h-full object-cover opacity-80 grayscale contrast-125" alt="feed" />
                         ) : (
-                            <div className="text-[10px] text-white/10 uppercase tracking-[0.3em] font-black italic">No Sight Link</div>
+                            <div className="text-[10px] text-white/5 uppercase tracking-[0.5em] font-black italic">SEARCHING_SIGNAL...</div>
                         )}
-                        <div className="absolute inset-0 pointer-events-none border-[16px] border-black/30 z-10" />
+
+                        <div className="absolute inset-0 pointer-events-none border-[1px] border-white/10 z-20" />
                     </div>
                 ))}
                 {connectedDevices.length === 0 && (
@@ -211,6 +235,15 @@ const App: React.FC = () => {
 
         {/* Main Content: Controls */}
         <main className="col-span-9 glass-panel p-10 flex flex-col gap-10 overflow-y-auto">
+           {/* Section: Quick Stats */}
+           <section>
+              <div className="flex items-center gap-3 mb-6">
+                <Monitor size={14} className="text-white/40" />
+                <h3 className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/40">端末ステータス概況</h3>
+              </div>
+              <DeviceStats devices={connectedDevices} />
+           </section>
+
            {/* Section: Application Control */}
            <section>
               <div className="flex items-center gap-3 mb-6">
@@ -220,7 +253,8 @@ const App: React.FC = () => {
               <div className="grid grid-cols-3 gap-6">
                 {[
                   { id: 'terminal', name: 'CORE_TERMINAL', icon: <Terminal size={20} />, color: 'bg-blue-500/10 text-blue-400' },
-                  { id: 'camera', name: 'SIGHT_FEED', icon: <Camera size={20} />, color: 'bg-purple-500/10 text-purple-400' },
+                  { id: 'calculator', name: 'CALC_UNIT', icon: <Sliders size={20} />, color: 'bg-green-500/10 text-green-400' },
+                  { id: 'connection', name: 'CONN_LINK', icon: <MessageSquare size={20} />, color: 'bg-orange-500/10 text-orange-400' },
                   { id: 'close', name: 'TERMINATE_ALL', icon: <Power size={20} />, color: 'bg-red-500/10 text-red-400' }
                 ].map(app => (
                   <button
@@ -349,6 +383,30 @@ const App: React.FC = () => {
                     className="px-8 bg-white text-black font-bold rounded-2xl uppercase tracking-widest text-[10px] hover:bg-white/90 transition-all"
                   >
                     送信
+                  </button>
+              </div>
+           </section>
+
+           {/* Section: Remote Notification */}
+           <section>
+              <div className="flex items-center gap-3 mb-6">
+                <ShieldAlert size={14} className="text-white/40" />
+                <h3 className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/40">システム通知（画面右上）</h3>
+              </div>
+              <div className="flex gap-4">
+                  <input
+                    type="text"
+                    placeholder="通知内容を入力（5秒で消えます）..."
+                    className="flex-1 bg-white/5 border border-white/10 rounded-2xl px-6 py-4 outline-none focus:border-white/30 transition-all font-mono text-sm"
+                    value={notificationText}
+                    onChange={(e) => setNotificationText(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && sendNotification()}
+                  />
+                  <button
+                    onClick={sendNotification}
+                    className="px-8 bg-white text-black font-bold rounded-2xl uppercase tracking-widest text-[10px] hover:bg-white/90 transition-all"
+                  >
+                    通知
                   </button>
               </div>
            </section>
