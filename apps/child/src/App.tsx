@@ -23,6 +23,7 @@ const App: React.FC = () => {
   const [showExitModal, setShowExitModal] = useState(false);
   const [showSetup, setShowSetup] = useState(!localStorage.getItem('masterUrl'));
   const [exitPassword, setExitPassword] = useState('');
+  const [passwordError, setPasswordError] = useState(false);
   const [masterUrl, setMasterUrl] = useState<string | null>(localStorage.getItem('masterUrl'));
   const [isShaking, setIsShaking] = useState(false);
   const [time, setTime] = useState(new Date());
@@ -78,16 +79,25 @@ const App: React.FC = () => {
               setShowSetup(true);
               setShowExitModal(false);
               setExitPassword('');
+              setPasswordError(false);
           } else if (action === 'TRIGGER_EVENT') {
               console.log('Event Triggered via Password');
               setShowExitModal(false);
               setExitPassword('');
+              setPasswordError(false);
+          }
+      };
+
+      const handlePasswordResult = (success: boolean) => {
+          if (!success) {
+              setPasswordError(true);
           }
       };
 
       (window as any).electron.on('SHOW_EXIT_MODAL', handleShowExit);
       (window as any).electron.on('MASTER_FOUND', handleMasterFound);
       (window as any).electron.on('PASSWORD_ACTION', handlePasswordAction);
+      (window as any).electron.on('PASSWORD_RESULT', handlePasswordResult);
     }
   }, []);
 
@@ -358,17 +368,29 @@ const App: React.FC = () => {
               <input
                 type="password"
                 autoFocus
-                className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-4 text-center outline-none mb-6 focus:border-white/30 transition-all text-xl tracking-[0.5em]"
+                className={`w-full bg-white/5 border rounded-xl px-4 py-4 text-center outline-none mb-2 focus:border-white/30 transition-all text-xl tracking-[0.5em] ${passwordError ? 'border-red-500' : 'border-white/10'}`}
                 value={exitPassword}
-                onChange={(e) => setExitPassword(e.target.value)}
+                onChange={(e) => {
+                    setExitPassword(e.target.value);
+                    if (passwordError) setPasswordError(false);
+                }}
                 onKeyDown={(e) => e.key === 'Enter' && handleVerifyPassword()}
               />
+
+              <div className="h-4 mb-4">
+                  {passwordError && (
+                      <span className="text-[10px] text-red-500 font-bold uppercase tracking-widest animate-pulse">
+                          パスワードが正しくありません
+                      </span>
+                  )}
+              </div>
 
               <div className="flex gap-4">
                 <button
                     onClick={() => {
                         setShowExitModal(false);
                         setExitPassword('');
+                        setPasswordError(false);
                     }}
                     className="flex-1 py-3 rounded-xl border border-white/5 hover:bg-white/5 transition-all text-xs uppercase tracking-widest"
                 >
