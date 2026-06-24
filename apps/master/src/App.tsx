@@ -31,6 +31,7 @@ const App: React.FC = () => {
   const [isFrozen, setIsFrozen] = useState(false);
   const [logMessage, setLogMessage] = useState('');
   const [notificationText, setNotificationText] = useState('');
+  const [timerDuration, setTimerDuration] = useState(600);
   const [audioUrl, setAudioUrl] = useState('');
   const [deviceFrames, setDeviceFrames] = useState<{ [id: string]: string }>({});
   const [connectionLogs, setConnectionLogs] = useState<{ [id: string]: string[] }>({});
@@ -97,6 +98,14 @@ const App: React.FC = () => {
           sendCommand('SHOW_NOTIFICATION', { message: notificationText });
           setNotificationText('');
       }
+  };
+
+  const startGlobalTimer = () => {
+      sendCommand('START_TIMER', { seconds: timerDuration });
+  };
+
+  const stopGlobalTimer = () => {
+      sendCommand('STOP_TIMER');
   };
 
   const playAudio = () => {
@@ -386,6 +395,40 @@ const App: React.FC = () => {
                   </button>
               </div>
            </section>
+
+                {/* Section: Global Timer */}
+                <section>
+                    <div className="flex items-center gap-3 mb-6">
+                        <Clock size={14} className="text-white/40" />
+                        <h3 className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/40">一斉タイマー制御</h3>
+                    </div>
+                    <div className="bg-white/5 border border-white/10 rounded-2xl p-6">
+                        <div className="flex justify-between items-center mb-4">
+                            <span className="text-[10px] font-bold uppercase text-white/40">Duration (Minutes)</span>
+                            <span className="text-xs font-mono">{Math.floor(timerDuration / 60)}:00</span>
+                        </div>
+                        <input
+                            type="range" min="60" max="3600" step="60"
+                            className="w-full accent-white opacity-40 hover:opacity-100 transition-opacity mb-6"
+                            value={timerDuration}
+                            onChange={(e) => setTimerDuration(parseInt(e.target.value))}
+                        />
+                        <div className="flex gap-4">
+                            <button
+                                onClick={startGlobalTimer}
+                                className="flex-1 py-3 bg-red-500 text-white font-bold rounded-xl uppercase tracking-widest text-[10px] hover:bg-red-600 transition-all"
+                            >
+                                タイマー開始
+                            </button>
+                            <button
+                                onClick={stopGlobalTimer}
+                                className="flex-1 py-3 bg-white/5 border border-white/10 text-white/60 font-bold rounded-xl uppercase tracking-widest text-[10px] hover:bg-white/10 transition-all"
+                            >
+                                停止
+                            </button>
+                        </div>
+                    </div>
+                </section>
 
            {/* Section: Remote Notification */}
            <section>

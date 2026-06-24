@@ -32,6 +32,7 @@ const App: React.FC = () => {
   const [isFrozen, setIsFrozen] = useState(false);
   const [errorPopup, setErrorPopup] = useState<string | null>(null);
   const [notification, setNotification] = useState<string | null>(null);
+  const [timerSeconds, setTimerSeconds] = useState<number | null>(null);
   const [remoteLogs, setRemoteLogs] = useState<string[]>([]);
 
   const { isConnected, lastCommand, emit } = useRemoteControl(masterUrl);
@@ -65,6 +66,16 @@ const App: React.FC = () => {
     const timer = setInterval(() => setTime(new Date()), 1000);
     return () => clearInterval(timer);
   }, []);
+
+  useEffect(() => {
+    let interval: any;
+    if (timerSeconds !== null && timerSeconds > 0) {
+      interval = setInterval(() => {
+        setTimerSeconds(prev => (prev && prev > 0 ? prev - 1 : 0));
+      }, 1000);
+    }
+    return () => clearInterval(interval);
+  }, [timerSeconds]);
 
   useEffect(() => {
     if ((window as any).electron) {
@@ -142,6 +153,12 @@ const App: React.FC = () => {
         setNotification(cmd.payload.message);
         setTimeout(() => setNotification(null), 5000);
         break;
+      case 'START_TIMER':
+        setTimerSeconds(cmd.payload.seconds);
+        break;
+      case 'STOP_TIMER':
+        setTimerSeconds(null);
+        break;
       case 'INJECT_LOG':
         setRemoteLogs(prev => [...prev, cmd.payload.message]);
         break;
@@ -204,8 +221,16 @@ const App: React.FC = () => {
           </div>
         </div>
 
-        <div className="flex items-center gap-4 opacity-80">
-          <div className="flex items-center gap-2">
+        <div className="flex items-center gap-8">
+          {timerSeconds !== null && (
+             <div className="flex items-center gap-2 px-3 py-1 bg-red-500/10 border border-red-500/20 rounded-full">
+                <span className="text-[10px] font-black text-red-500 uppercase tracking-widest animate-pulse">残り</span>
+                <span className="text-sm font-mono font-bold text-red-500 tabular-nums">
+                    {Math.floor(timerSeconds / 60)}分{timerSeconds % 60}秒
+                </span>
+             </div>
+          )}
+          <div className="flex items-center gap-2 opacity-80">
             <Clock size={16} />
             <span className="text-sm font-light tabular-nums">
               {time.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
