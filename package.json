@@ -9,10 +9,14 @@
     "dev:child": "npm run dev -w apps/child",
     "dev:master": "npm run dev -w apps/master",
     "build:child": "npm run build -w apps/child",
-    "build:master": "npm run build -w apps/master"
+    "build:master": "npm run build -w apps/master",
+    "dist:child": "npm run dist -w apps/child",
+    "dist:master": "npm run dist -w apps/master",
+    "dist:all": "npm run dist:child && npm run dist:master"
   },
   "devDependencies": {
     "electron": "^31.0.0",
+    "electron-builder": "^26.15.3",
     "typescript": "^5.0.0"
   }
 }
