@@ -25,9 +25,9 @@ body {
   height: 150vh;
   background: radial-gradient(
     circle at center,
-    rgba(255, 255, 255, 0.05) 0%,
-    rgba(255, 255, 255, 0.02) 20%,
-    transparent 60%
+    rgba(255, 255, 255, 0.08) 0%,
+    rgba(255, 255, 255, 0.03) 30%,
+    transparent 70%
   );
   pointer-events: none;
   z-index: 0;

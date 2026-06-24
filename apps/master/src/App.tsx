@@ -87,8 +87,8 @@ const App: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-[#0f0f11] text-[#f5f5f7] flex flex-col p-8 gap-8 font-sans">
-      <div className="aura-bg" />
+    <div className="min-h-screen bg-[#0d0d0f] text-[#f5f5f7] flex flex-col p-8 gap-8 font-sans">
+      <div className="aura-bg opacity-40" />
 
       {/* Header */}
       <header className="relative z-10 flex justify-between items-center bg-white/5 p-6 rounded-[24px] border border-white/10 backdrop-blur-md">
@@ -98,13 +98,13 @@ const App: React.FC = () => {
           </div>
           <div>
             <h1 className="text-xl font-bold tracking-tight">MADOS MASTER</h1>
-            <p className="text-[10px] text-white/40 uppercase tracking-[0.2em]">Command & Control Center</p>
+            <p className="text-[10px] text-white/40 uppercase tracking-[0.2em]">指令・統制センター</p>
           </div>
         </div>
         <div className="flex items-center gap-8">
             <div className="flex flex-col items-end">
-                <span className="text-xs font-bold">{connectedDevices.length} TERMINALS</span>
-                <span className="text-[10px] text-green-500 font-bold tracking-widest uppercase">Network Live</span>
+                <span className="text-xs font-bold">{connectedDevices.length} 端末接続中</span>
+                <span className="text-[10px] text-green-500 font-bold tracking-widest uppercase">ネットワーク正常</span>
             </div>
             <div className="w-[1px] h-10 bg-white/10" />
             <div className="text-right">
@@ -117,7 +117,7 @@ const App: React.FC = () => {
       <div className="flex-1 grid grid-cols-12 gap-8 overflow-hidden relative z-10">
         {/* Sidebar: Device List */}
         <aside className="col-span-3 flex flex-col gap-4">
-          <h2 className="text-[10px] font-bold text-white/40 uppercase tracking-[0.2em] px-2">Deployment Range</h2>
+          <h2 className="text-[10px] font-bold text-white/40 uppercase tracking-[0.2em] px-2">デプロイ範囲</h2>
           <div className="flex-1 space-y-2 overflow-y-auto pr-2">
             <button
               onClick={() => setSelectedChild('all')}
@@ -164,7 +164,7 @@ const App: React.FC = () => {
            <section>
               <div className="flex items-center gap-3 mb-6">
                 <Layout size={14} className="text-white/40" />
-                <h3 className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/40">Interface Override</h3>
+                <h3 className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/40">インターフェース・オーバーライド</h3>
               </div>
               <div className="grid grid-cols-3 gap-6">
                 {[
@@ -189,7 +189,7 @@ const App: React.FC = () => {
                 <section>
                     <div className="flex items-center gap-3 mb-6">
                         <Zap size={14} className="text-white/40" />
-                        <h3 className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/40">Environment Manipulation</h3>
+                        <h3 className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/40">環境操作</h3>
                     </div>
                     <div className="grid grid-cols-2 gap-4">
                         <button
@@ -197,14 +197,14 @@ const App: React.FC = () => {
                             className="flex items-center justify-center gap-3 p-4 bg-white/5 rounded-2xl border border-white/5 hover:bg-white/10 transition-all text-[10px] font-bold uppercase"
                         >
                             <Zap size={14} />
-                            Shake
+                            画面揺れ
                         </button>
                         <button
                             onClick={triggerError}
                             className="flex items-center justify-center gap-3 p-4 bg-white/5 rounded-2xl border border-white/5 hover:bg-white/10 transition-all text-[10px] font-bold uppercase text-orange-400"
                         >
                             <AlertCircle size={14} />
-                            Fake Error
+                            エラー表示
                         </button>
                         <button
                             onClick={toggleFreeze}
@@ -215,7 +215,7 @@ const App: React.FC = () => {
                             }`}
                         >
                             <ShieldAlert size={16} />
-                            {isFrozen ? 'System Unfreeze' : 'OS Global Freeze'}
+                            {isFrozen ? 'システム凍結解除' : 'システム一斉凍結'}
                         </button>
                     </div>
                 </section>
@@ -224,7 +224,7 @@ const App: React.FC = () => {
                 <section>
                     <div className="flex items-center gap-3 mb-6">
                         <Sliders size={14} className="text-white/40" />
-                        <h3 className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/40">Sight Config</h3>
+                        <h3 className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/40">視覚設定</h3>
                     </div>
                     <div className="space-y-6 bg-white/5 p-6 rounded-2xl border border-white/5">
                         <div className="flex justify-between items-center">
@@ -247,7 +247,7 @@ const App: React.FC = () => {
                             }`}
                         >
                             <Camera size={16} />
-                            {cameraActive ? 'Deactivate Camera' : 'Activate Camera'}
+                            {cameraActive ? 'カメラ停止' : 'カメラ起動'}
                         </button>
                     </div>
                 </section>
@@ -258,12 +258,12 @@ const App: React.FC = () => {
            <section>
               <div className="flex items-center gap-3 mb-6">
                 <MessageSquare size={14} className="text-white/40" />
-                <h3 className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/40">Remote Log Injection</h3>
+                <h3 className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/40">リモートログ・インジェクション</h3>
               </div>
               <div className="flex gap-4">
                   <input
                     type="text"
-                    placeholder="Enter command or narrative string..."
+                    placeholder="コマンドまたはナラティブ文字列を入力..."
                     className="flex-1 bg-white/5 border border-white/10 rounded-2xl px-6 py-4 outline-none focus:border-white/30 transition-all font-mono text-sm"
                     value={logMessage}
                     onChange={(e) => setLogMessage(e.target.value)}
@@ -273,7 +273,7 @@ const App: React.FC = () => {
                     onClick={injectLog}
                     className="px-8 bg-white text-black font-bold rounded-2xl uppercase tracking-widest text-[10px] hover:bg-white/90 transition-all"
                   >
-                    Inject
+                    送信
                   </button>
               </div>
            </section>
@@ -282,7 +282,7 @@ const App: React.FC = () => {
            <section>
               <div className="flex items-center gap-3 mb-6">
                 <Zap size={14} className="text-white/40" />
-                <h3 className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/40">Remote Audio Control</h3>
+                <h3 className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/40">リモートオーディオ操作</h3>
               </div>
               <div className="flex gap-4">
                   <input
@@ -297,13 +297,13 @@ const App: React.FC = () => {
                         onClick={playAudio}
                         className="px-6 bg-white text-black font-bold rounded-2xl uppercase tracking-widest text-[10px] hover:bg-white/90 transition-all"
                     >
-                        Play
+                        再生
                     </button>
                     <button
                         onClick={stopAudio}
                         className="px-6 bg-red-500/10 text-red-500 border border-red-500/20 font-bold rounded-2xl uppercase tracking-widest text-[10px] hover:bg-red-500/20 transition-all"
                     >
-                        Stop
+                        停止
                     </button>
                   </div>
               </div>
@@ -314,7 +314,7 @@ const App: React.FC = () => {
            <section className="flex-1">
               <div className="flex items-center gap-3 mb-6">
                 <Eye size={14} className="text-white/40" />
-                <h3 className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/40">Security Grid</h3>
+                <h3 className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/40">セキュリティ・グリッド</h3>
               </div>
               <div className="grid grid-cols-2 gap-6 min-h-[320px]">
                 {connectedDevices.slice(0, 4).map((device, i) => (
@@ -328,7 +328,7 @@ const App: React.FC = () => {
                             <img src={deviceFrames[device.id]} className="w-full h-full object-cover opacity-80" alt="feed" />
                         ) : (
                             <div className="flex flex-col items-center gap-3">
-                                <div className="text-[10px] text-white/10 uppercase tracking-widest font-bold">Waiting for Signal</div>
+                                <div className="text-[10px] text-white/10 uppercase tracking-widest font-bold">信号待機中</div>
                                 {cameraActive && (
                                     <div className="w-8 h-1 bg-white/5 rounded-full overflow-hidden">
                                         <motion.div
@@ -346,7 +346,7 @@ const App: React.FC = () => {
                 ))}
                 {connectedDevices.length === 0 && (
                      <div className="col-span-2 flex items-center justify-center border-2 border-dashed border-white/5 rounded-[32px] text-white/5 uppercase tracking-[0.4em] font-black text-2xl">
-                         No Devices Linked
+                         デバイス未接続
                      </div>
                 )}
               </div>

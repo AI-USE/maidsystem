@@ -9,9 +9,9 @@ interface TerminalProps {
 const Terminal: React.FC<TerminalProps> = ({ remoteLogs = [] }) => {
   const { closeApp } = useOS();
   const [logs, setLogs] = useState<string[]>([
-    'MAD-OS KERNEL V1.1 INITIALIZED',
-    'SECURITY LAYER ACTIVE',
-    'WAITING FOR INPUT...'
+    'MAD-OS カーネル V1.1 初期化完了',
+    'セキュリティレイヤー 有効',
+    '入力を待機中...'
   ]);
   const [pendingLogs, setPendingLogs] = useState<string[]>([]);
   const [typingLog, setTypingLog] = useState<string>('');

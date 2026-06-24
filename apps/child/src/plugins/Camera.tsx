@@ -71,7 +71,7 @@ const CameraMonitor: React.FC<CameraProps> = ({ onClose, fps = 10, isActive = fa
       {!isActive ? (
         <div className="flex-1 flex flex-col items-center justify-center gap-4 text-white/10 uppercase tracking-[0.2em]">
             <ZapOff size={48} />
-            <span className="text-xs font-bold">Signal Encrypted / Camera Off</span>
+            <span className="text-xs font-bold">信号暗号化済み / カメラオフ</span>
         </div>
       ) : (
         <div className="flex-1 flex items-center justify-center relative overflow-hidden">

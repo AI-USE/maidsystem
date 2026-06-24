@@ -161,8 +161,8 @@ const App: React.FC = () => {
 
   return (
     <OSContext.Provider value={osContextValue}>
-    <div className={`relative h-screen w-screen bg-[#0f0f11] text-[#f5f5f7] overflow-hidden ${isShaking ? 'animate-shake' : ''} ${isFrozen ? 'pointer-events-none select-none' : ''}`}>
-      <div className="aura-bg" />
+    <div className={`relative h-screen w-screen bg-[#0d0d0f] text-[#f5f5f7] overflow-hidden ${isShaking ? 'animate-shake' : ''} ${isFrozen ? 'pointer-events-none select-none' : ''}`}>
+      <div className="aura-bg opacity-40" />
 
       {/* 1. Status Bar (Top) */}
       <header className="absolute top-0 left-0 w-full h-12 flex items-center justify-between px-8 z-50">
@@ -174,7 +174,7 @@ const App: React.FC = () => {
           <div className={`flex items-center gap-2 px-3 py-1 rounded-full bg-white/5 border border-white/10 ${isConnected ? 'text-green-400' : 'text-white/40'}`}>
             {isConnected ? <Wifi size={14} /> : <WifiOff size={14} />}
             <span className="text-[10px] font-bold uppercase tracking-tighter">
-              {isConnected ? 'Sync Active' : 'Offline Mode'}
+              {isConnected ? '同期中' : 'オフライン'}
             </span>
           </div>
         </div>
@@ -195,11 +195,11 @@ const App: React.FC = () => {
           {activeApp ? (
             <motion.div
               key={activeApp.id}
-              initial={{ opacity: 0, scale: 0.98, y: 10 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 1.02, y: -10 }}
-              transition={{ duration: 0.4, ease: [0.23, 1, 0.32, 1] }}
-              className="glass-panel w-full h-full overflow-hidden flex flex-col"
+              initial={{ opacity: 0, scale: 0.8, y: 20, filter: 'blur(10px)' }}
+              animate={{ opacity: 1, scale: 1, y: 0, filter: 'blur(0px)' }}
+              exit={{ opacity: 0, scale: 0.9, y: 10, filter: 'blur(5px)' }}
+              transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
+              className="glass-panel w-full h-full overflow-hidden flex flex-col shadow-[0_32px_64px_-12px_rgba(0,0,0,0.8)]"
             >
               <div className="h-14 flex items-center justify-between px-6 border-b border-white/5 bg-white/5">
                 <div className="flex items-center gap-3">
@@ -235,7 +235,7 @@ const App: React.FC = () => {
               className="flex flex-col items-center justify-center text-white/10"
             >
                 <div className="text-8xl font-black tracking-[3rem] translate-x-[1.5rem] mb-2">MAD</div>
-                <div className="text-xs uppercase tracking-[1rem] font-light">Molecular Analysis & Decoding</div>
+                <div className="text-xs uppercase tracking-[1rem] font-light">分子解析 & 復号</div>
             </motion.div>
           )}
         </AnimatePresence>
@@ -248,7 +248,7 @@ const App: React.FC = () => {
             <button
               key={plugin.id}
               onClick={() => setActiveAppId(plugin.id)}
-              className="relative group p-3 rounded-2xl transition-all duration-300 hover:bg-white/10"
+              className={`relative group p-3 rounded-2xl transition-all duration-500 ${activeAppId === plugin.id ? 'bg-white/10' : 'hover:bg-white/5'}`}
             >
               <div className={`transition-colors duration-300 ${activeAppId === plugin.id ? 'text-white' : 'text-white/40'}`}>
                 {plugin.icon}
@@ -284,8 +284,8 @@ const App: React.FC = () => {
             className="fixed inset-0 z-[200] bg-red-950/20 backdrop-blur-md flex flex-col items-center justify-center"
           >
              <ShieldAlert size={80} className="text-red-500 mb-8 animate-pulse" />
-             <h2 className="text-4xl font-black text-red-500 tracking-[0.5em] uppercase">System Locked</h2>
-             <p className="text-red-500/60 font-mono mt-4">UNAUTHORIZED ACCESS DETECTED - CORE_FROZEN</p>
+             <h2 className="text-4xl font-black text-red-500 tracking-[0.5em] uppercase">システムロック</h2>
+             <p className="text-red-500/60 font-mono mt-4">未認証のアクセスを検知しました - CORE_FROZEN</p>
           </motion.div>
         )}
       </AnimatePresence>
@@ -302,14 +302,14 @@ const App: React.FC = () => {
             <div className="glass-panel p-8 max-w-md w-full border-red-500/50 bg-red-950/40">
                 <div className="flex items-center gap-4 mb-6 text-red-500">
                     <ShieldAlert size={24} />
-                    <h3 className="font-bold uppercase tracking-widest">Critical System Error</h3>
+                    <h3 className="font-bold uppercase tracking-widest">致命的なシステムエラー</h3>
                 </div>
                 <p className="font-mono text-sm mb-8 text-white/80">{errorPopup}</p>
                 <button
                     onClick={() => setErrorPopup(null)}
                     className="w-full py-3 bg-red-500 text-white font-bold rounded-xl uppercase tracking-widest text-xs"
                 >
-                    Acknowledge
+                    確認
                 </button>
             </div>
           </motion.div>
@@ -330,8 +330,8 @@ const App: React.FC = () => {
               className="w-full max-w-sm glass-panel p-8 text-center"
             >
               <Lock className="mx-auto mb-6 text-white/40" size={32} />
-              <h2 className="text-lg font-bold mb-2 tracking-widest uppercase">System Restriction</h2>
-              <p className="text-xs text-white/40 mb-8 uppercase tracking-tighter">Authorized personnel only</p>
+              <h2 className="text-lg font-bold mb-2 tracking-widest uppercase">システム制限</h2>
+              <p className="text-xs text-white/40 mb-8 uppercase tracking-tighter">許可された担当者のみアクセス可能です</p>
 
               <input
                 type="password"
@@ -350,13 +350,13 @@ const App: React.FC = () => {
                     }}
                     className="flex-1 py-3 rounded-xl border border-white/5 hover:bg-white/5 transition-all text-xs uppercase tracking-widest"
                 >
-                  Cancel
+                  キャンセル
                 </button>
                 <button
                     onClick={handleVerifyPassword}
                     className="flex-1 py-3 rounded-xl bg-white text-black font-bold text-xs uppercase tracking-widest hover:bg-white/90 transition-all"
                 >
-                  Confirm
+                  実行
                 </button>
               </div>
             </motion.div>

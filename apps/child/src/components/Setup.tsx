@@ -37,8 +37,8 @@ export const Setup: React.FC<SetupProps> = ({ onComplete }) => {
           <Wifi className="text-white/60" size={32} />
         </div>
 
-        <h1 className="text-2xl font-bold mb-2 tracking-tight">Establish Connection</h1>
-        <p className="text-sm text-white/40 mb-10">Enter the Master Terminal IP address to pair this device.</p>
+        <h1 className="text-2xl font-bold mb-2 tracking-tight">システム接続の確立</h1>
+        <p className="text-sm text-white/40 mb-10">親機端末のIPアドレスを入力して、このデバイスをペアリングします。</p>
 
         <form onSubmit={handleSubmit} className="w-full space-y-6">
           <div className="relative">
@@ -54,8 +54,8 @@ export const Setup: React.FC<SetupProps> = ({ onComplete }) => {
 
           <div className="flex items-center justify-between p-4 bg-white/5 rounded-2xl border border-white/5">
             <div className="text-left">
-                <div className="text-[10px] font-bold uppercase tracking-widest text-white/40 mb-1">Security Mode</div>
-                <div className="text-xs font-bold text-white/80">Kiosk & Shortcut Lock</div>
+                <div className="text-[10px] font-bold uppercase tracking-widest text-white/40 mb-1">セキュリティモード</div>
+                <div className="text-xs font-bold text-white/80">キオスク & ショートカットロック</div>
             </div>
             <button
                 type="button"
@@ -71,14 +71,14 @@ export const Setup: React.FC<SetupProps> = ({ onComplete }) => {
             disabled={!ip}
             className="w-full py-4 rounded-2xl bg-white text-black font-bold text-xs uppercase tracking-[0.2em] hover:bg-white/90 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
           >
-            Initialize Pairing
+            ペアリング開始
             <ArrowRight size={16} />
           </button>
         </form>
 
         <div className="mt-10 pt-8 border-t border-white/5 w-full flex items-center justify-center gap-4 text-white/20">
           <Shield size={14} />
-          <span className="text-[10px] font-bold uppercase tracking-widest">Kiosk Protocol v2.0</span>
+          <span className="text-[10px] font-bold uppercase tracking-widest">Kiosk プロトコル v2.0</span>
         </div>
       </motion.div>
     </div>
