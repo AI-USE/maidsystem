@@ -60,8 +60,9 @@ function getLocalIP() {
     return ips[0].address;
 }
 
+let actualPort = 3030;
 ipcMain.on('GET_LOCAL_IP', (event) => {
-    event.reply('LOCAL_IP_RESULT', getLocalIP());
+    event.reply('LOCAL_IP_RESULT', { ip: getLocalIP(), port: actualPort });
 });
 
 // Socket.io Server Setup
@@ -214,7 +215,7 @@ udpSocket.on('error', (err) => {
 
 udpSocket.on('message', (msg, rinfo) => {
   if (msg.toString() === 'MAD_OS_DISCOVERY') {
-    const ack = Buffer.from('MAD_OS_MASTER_ACK');
+    const ack = Buffer.from(`MAD_OS_MASTER_ACK:${actualPort}`);
     udpSocket.send(ack, rinfo.port, rinfo.address);
   }
 });
@@ -227,17 +228,21 @@ try {
     console.error('Failed to bind UDP socket:', err);
 }
 
-server.on('error', (e) => {
-  if (e.code === 'EADDRINUSE') {
-    console.error('Port 3030 is already in use');
-  } else {
-    console.error('Server error:', e);
-  }
-});
+function startServer(port) {
+  server.listen(port, '0.0.0.0', () => {
+    actualPort = port;
+    console.log(`Master Server successfully listening on 0.0.0.0:${port}`);
+  }).on('error', (err) => {
+    if (err.code === 'EADDRINUSE') {
+      console.log(`Port ${port} is in use, trying ${port + 1}...`);
+      startServer(port + 1);
+    } else {
+      console.error('Server error:', err);
+    }
+  });
+}
 
-server.listen(3030, '0.0.0.0', () => {
-  console.log('Master Server listening on 0.0.0.0:3030');
-});
+startServer(3030);
 
 app.whenReady().then(createWindow);
 

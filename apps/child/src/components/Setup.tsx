@@ -9,7 +9,7 @@ interface SetupProps {
 export const Setup: React.FC<SetupProps> = ({ onComplete }) => {
   const [step, setStep] = useState(1);
   const [deviceName, setDeviceName] = useState(localStorage.getItem('deviceName') || '');
-  const [ip, setIp] = useState(localStorage.getItem('masterUrl')?.replace('http://', '').replace(':3030', '') || '');
+  const [ip, setIp] = useState(localStorage.getItem('masterUrl')?.replace('http://', '') || '');
   const [kioskEnabled, setKioskEnabled] = useState(true);
   const [testStatus, setTestStatus] = useState<'idle' | 'testing' | 'success' | 'error'>('idle');
   const [showPasswords, setShowPasswords] = useState(false);
@@ -21,7 +21,13 @@ export const Setup: React.FC<SetupProps> = ({ onComplete }) => {
 
   const testConnection = async () => {
     setTestStatus('testing');
-    const targetUrl = ip.startsWith('http') ? ip : `http://${ip}:3030`;
+
+    let targetUrl = ip;
+    if (!ip.startsWith('http')) {
+        // If user didn't specify a port (no colon), append :3030 as default
+        const hasPort = ip.includes(':');
+        targetUrl = `http://${ip}${hasPort ? '' : ':3030'}`;
+    }
 
     try {
         const controller = new AbortController();
@@ -43,8 +49,14 @@ export const Setup: React.FC<SetupProps> = ({ onComplete }) => {
   const saveAndNext = () => {
       if (step === 1) {
           localStorage.setItem('deviceName', deviceName || 'UNNAMED_TERMINAL');
-          const finalIp = ip.startsWith('http') ? ip : `http://${ip}:3030`;
-          localStorage.setItem('masterUrl', finalIp);
+
+          let finalUrl = ip;
+          if (!ip.startsWith('http')) {
+              const hasPort = ip.includes(':');
+              finalUrl = `http://${ip}${hasPort ? '' : ':3030'}`;
+          }
+
+          localStorage.setItem('masterUrl', finalUrl);
           setStep(2);
       } else if (step === 3) {
           localStorage.setItem('pass_exit', passwords.exit);

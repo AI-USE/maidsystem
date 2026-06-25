@@ -45,6 +45,7 @@ const App: React.FC = () => {
   const [deviceFrames, setDeviceFrames] = useState<{ [id: string]: string }>({});
   const [connectionLogs, setConnectionLogs] = useState<{ [id: string]: string[] }>({});
   const [localIp, setLocalIp] = useState('0.0.0.0');
+  const [localPort, setLocalPort] = useState(3030);
   const [isSecurityMode, setIsSecurityMode] = useState(false);
   const [pendingApprovals, setPendingApprovals] = useState<any[]>([]);
   const [activeTab, setActiveTab] = useState<'fleet' | 'performance'>('fleet');
@@ -52,7 +53,10 @@ const App: React.FC = () => {
   useEffect(() => {
     if ((window as any).electron) {
       (window as any).electron.send('GET_LOCAL_IP');
-      (window as any).electron.on('LOCAL_IP_RESULT', (ip: string) => setLocalIp(ip));
+      (window as any).electron.on('LOCAL_IP_RESULT', ({ ip, port }: { ip: string, port: number }) => {
+          setLocalIp(ip);
+          setLocalPort(port);
+      });
 
       (window as any).electron.on('DEVICES_UPDATED', (devices: any[]) => {
         const formatted = devices.map(d => typeof d === 'string' ? { id: d, online: true } : d);
@@ -252,7 +256,7 @@ const App: React.FC = () => {
             <div className="px-4 py-2 bg-white/5 rounded-xl border border-white/10 flex flex-col group relative overflow-hidden">
                 <div className="absolute inset-0 bg-green-500/5 opacity-0 group-hover:opacity-100 transition-opacity" />
                 <span className="text-[8px] text-white/30 uppercase font-bold tracking-widest relative z-10">Master_Connection_URL</span>
-                <span className="text-sm font-mono text-green-400 font-bold relative z-10">http://{localIp}:3030</span>
+                <span className="text-sm font-mono text-green-400 font-bold relative z-10">http://{localIp}:{localPort}</span>
             </div>
           </div>
         </div>

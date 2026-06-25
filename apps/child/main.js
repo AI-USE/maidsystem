@@ -151,8 +151,10 @@ ipcMain.on('START_DISCOVERY', (event) => {
   }, 5000);
 
   udpSocket.on('message', (msg, rinfo) => {
-    if (msg.toString() === 'MAD_OS_MASTER_ACK') {
-      const masterUrl = `http://${rinfo.address}:3030`;
+    const data = msg.toString();
+    if (data.startsWith('MAD_OS_MASTER_ACK')) {
+      const port = data.split(':')[1] || '3030';
+      const masterUrl = `http://${rinfo.address}:${port}`;
       event.reply('MASTER_FOUND', masterUrl);
     }
   });
