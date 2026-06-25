@@ -413,13 +413,33 @@ const App: React.FC = () => {
                         <span className="text-[10px] font-bold uppercase tracking-widest">{isFrozen ? 'システム復旧' : '一斉凍結'}</span>
                     </button>
 
-                    <button
-                        onClick={toggleCamera}
-                        className={`flex flex-col items-center gap-3 p-6 rounded-[24px] border transition-all ${cameraActive ? 'bg-purple-500 text-white border-purple-400 shadow-xl' : 'bg-white/5 border-white/10 text-white/40 hover:bg-white/10'}`}
-                    >
-                        {cameraActive ? <VideoOff size={24} /> : <Video size={24} />}
-                        <span className="text-[10px] font-bold uppercase tracking-widest">{cameraActive ? '映像切断' : '映像一斉受信'}</span>
-                    </button>
+                    <div className="flex flex-col gap-2 glass-panel p-4 items-center">
+                        <button
+                            onClick={toggleCamera}
+                            className={`w-full flex items-center justify-center gap-3 p-4 rounded-xl border transition-all ${cameraActive ? 'bg-purple-500 text-white border-purple-400 shadow-lg' : 'bg-white/5 border-white/10 text-white/40 hover:bg-white/10'}`}
+                        >
+                            {cameraActive ? <VideoOff size={20} /> : <Video size={20} />}
+                            <span className="text-[10px] font-bold uppercase tracking-widest">{cameraActive ? '映像切断' : '映像一斉受信'}</span>
+                        </button>
+                        <div className="w-full flex flex-col gap-1 px-2">
+                             <div className="flex justify-between items-center">
+                                <span className="text-[7px] font-bold text-white/20 uppercase tracking-widest">Camera_FPS</span>
+                                <span className="text-[9px] font-mono text-white/60">{cameraFps} FPS</span>
+                             </div>
+                             <input
+                                type="range" min="1" max="30" step="1"
+                                className="w-full accent-purple-500 opacity-60 hover:opacity-100 transition-opacity"
+                                value={cameraFps}
+                                onChange={(e) => {
+                                    const val = parseInt(e.target.value);
+                                    setCameraFps(val);
+                                    if (cameraActive) {
+                                        sendCommand('SET_CAMERA', { active: true, fps: val });
+                                    }
+                                }}
+                             />
+                        </div>
+                    </div>
 
                     <div className="col-span-2 glass-panel p-6 flex items-center gap-4">
                         <div className="flex-1 flex flex-col gap-2">

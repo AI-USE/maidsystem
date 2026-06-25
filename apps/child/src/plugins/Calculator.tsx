@@ -16,8 +16,23 @@ const CalculatorApp: React.FC = () => {
 
   const calculate = () => {
     try {
-      const result = eval(equation + display);
-      setDisplay(String(result));
+      const parts = equation.trim().split(' ');
+      if (parts.length < 2) return;
+
+      const num1 = parseFloat(parts[0]);
+      const operator = parts[1];
+      const num2 = parseFloat(display);
+
+      let result = 0;
+      switch (operator) {
+          case '+': result = num1 + num2; break;
+          case '-': result = num1 - num2; break;
+          case '*': result = num1 * num2; break;
+          case '/': result = num2 !== 0 ? num1 / num2 : NaN; break;
+          default: result = num2;
+      }
+
+      setDisplay(String(Number.isFinite(result) ? result : 'Error'));
       setEquation('');
     } catch (e) {
       setDisplay('Error');

@@ -21,13 +21,13 @@ function loadConfig() {
         if (fs.existsSync(CONFIG_PATH)) {
             const data = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
 
-            // Environment variables take precedence if they exist
-            PASSWORDS.exit = process.env.MADOS_PASS_EXIT || data.passwords?.exit || PASSWORDS.exit;
-            PASSWORDS.event = process.env.MADOS_PASS_EVENT || data.passwords?.event || PASSWORDS.event;
-            PASSWORDS.admin = process.env.MADOS_PASS_ADMIN || data.passwords?.admin || PASSWORDS.admin;
+            // User-configured values in file take precedence over environment variables
+            PASSWORDS.exit = data.passwords?.exit || process.env.MADOS_PASS_EXIT || PASSWORDS.exit;
+            PASSWORDS.event = data.passwords?.event || process.env.MADOS_PASS_EVENT || PASSWORDS.event;
+            PASSWORDS.admin = data.passwords?.admin || process.env.MADOS_PASS_ADMIN || PASSWORDS.admin;
 
             if (data.kiosk !== undefined) kioskMode = data.kiosk;
-            console.log('Config loaded into memory:', PASSWORDS);
+            console.log('Config loaded into memory (Priority: Config File > Env):', PASSWORDS);
         }
     } catch (err) {
         console.error('Failed to load config:', err);
@@ -125,10 +125,10 @@ ipcMain.on('SET_KIOSK', (event, enabled) => {
 ipcMain.on('UPDATE_CONFIG', (event, config) => {
     console.log('Updating config in main process:', config);
     if (config.passwords) {
-        // Only update if environment variables are NOT set
-        PASSWORDS.exit = process.env.MADOS_PASS_EXIT || config.passwords.exit;
-        PASSWORDS.event = process.env.MADOS_PASS_EVENT || config.passwords.event;
-        PASSWORDS.admin = process.env.MADOS_PASS_ADMIN || config.passwords.admin;
+        // Explicit UI updates ALWAYS take precedence
+        PASSWORDS.exit = config.passwords.exit || PASSWORDS.exit;
+        PASSWORDS.event = config.passwords.event || PASSWORDS.event;
+        PASSWORDS.admin = config.passwords.admin || PASSWORDS.admin;
     }
     if (config.kiosk !== undefined) {
         kioskMode = config.kiosk;

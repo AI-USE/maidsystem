@@ -31,14 +31,31 @@ function createWindow() {
 const os = require('os');
 function getLocalIP() {
     const interfaces = os.networkInterfaces();
+    let bestIp = '127.0.0.1';
+
+    // Priority list for interface names (common Wi-Fi and Ethernet names)
+    const priorityNames = ['wi-fi', 'wlan', 'ethernet', 'eth', 'en0', 'en1'];
+
     for (const name of Object.keys(interfaces)) {
+        const lowerName = name.toLowerCase();
+
+        // Skip virtual interfaces (common in development environments)
+        if (lowerName.includes('virtual') || lowerName.includes('vbox') || lowerName.includes('vmware') || lowerName.includes('vethernet')) {
+            continue;
+        }
+
         for (const iface of interfaces[name]) {
             if (iface.family === 'IPv4' && !iface.internal) {
-                return iface.address;
+                // If we found a priority name, return immediately
+                if (priorityNames.some(pn => lowerName.includes(pn))) {
+                    return iface.address;
+                }
+                // Otherwise keep as fallback
+                bestIp = iface.address;
             }
         }
     }
-    return '127.0.0.1';
+    return bestIp;
 }
 
 ipcMain.on('GET_LOCAL_IP', (event) => {
@@ -189,8 +206,8 @@ server.on('error', (e) => {
   }
 });
 
-server.listen(3030, () => {
-  console.log('Master Server listening on port 3030');
+server.listen(3030, '0.0.0.0', () => {
+  console.log('Master Server listening on 0.0.0.0:3030');
 });
 
 app.whenReady().then(createWindow);
