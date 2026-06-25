@@ -50,9 +50,16 @@ export const useRemoteControl = (masterUrl: string | null) => {
       setLastCommand(command);
     });
 
+    const heartbeatInterval = setInterval(() => {
+        if (newSocket.connected) {
+            newSocket.emit('HEARTBEAT', { timestamp: Date.now() });
+        }
+    }, 5000);
+
     setSocket(newSocket);
 
     return () => {
+      clearInterval(heartbeatInterval);
       newSocket.disconnect();
     };
   }, [masterUrl]);

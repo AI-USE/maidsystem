@@ -29,6 +29,7 @@ interface DeviceInfo {
   name?: string;
   activeApp?: string;
   online: boolean;
+  lastSeen?: number;
 }
 
 const App: React.FC = () => {
@@ -153,8 +154,89 @@ const App: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-[#0d0d0f] text-[#f5f5f7] flex flex-col p-8 gap-8 font-sans">
+    <div className="min-h-screen bg-[#0d0d0f] text-[#f5f5f7] flex flex-col p-8 gap-8 font-sans overflow-hidden">
       <div className="aura-bg opacity-40" />
+
+      {/* Surveillance Mode Overlay */}
+      <AnimatePresence>
+          {isSecurityMode && (
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="fixed inset-0 z-[100] bg-black p-10 flex flex-col gap-8"
+              >
+                  {/* Scanline Effect */}
+                  <div className="absolute inset-0 pointer-events-none z-50 opacity-10 bg-[linear-gradient(rgba(18,16,16,0)_50%,rgba(0,0,0,0.25)_50%),linear-gradient(90deg,rgba(255,0,0,0.06),rgba(0,255,0,0.02),rgba(0,0,255,0.06))] bg-[length:100%_4px,4px_100%]" />
+
+                  <div className="flex justify-between items-center relative z-[60]">
+                      <div className="flex items-center gap-4">
+                          <div className="w-3 h-3 bg-red-500 rounded-full animate-pulse" />
+                          <h2 className="text-2xl font-black tracking-[0.3em] uppercase italic">System_Surveillance_Grid</h2>
+                      </div>
+                      <div className="flex items-center gap-8 font-mono text-xl opacity-60">
+                          <span>{new Date().toLocaleDateString()}</span>
+                          <Clock className="animate-pulse" />
+                          <span>{new Date().toLocaleTimeString()}</span>
+                          <button
+                            onClick={() => setIsSecurityMode(false)}
+                            className="ml-8 px-6 py-2 border border-white/20 rounded-full text-sm hover:bg-white/10 transition-all"
+                          >
+                            EXIT_VIEW
+                          </button>
+                      </div>
+                  </div>
+
+                  <div className="flex-1 grid grid-cols-3 gap-6 relative z-[60]">
+                      {connectedDevices.map((device, i) => (
+                          <div key={device.id} className="relative bg-white/5 border border-white/10 rounded-3xl overflow-hidden group">
+                              {deviceFrames[device.id] ? (
+                                  <img src={deviceFrames[device.id]} className="w-full h-full object-cover grayscale brightness-75 contrast-125" alt="feed" />
+                              ) : (
+                                  <div className="absolute inset-0 flex flex-col items-center justify-center gap-4">
+                                      <VideoOff size={48} className="text-white/10" />
+                                      <span className="text-[10px] font-black text-white/20 uppercase tracking-[0.5em]">No_Signal</span>
+                                  </div>
+                              )}
+
+                              {/* OSD Info */}
+                              <div className="absolute top-6 left-6 flex flex-col gap-1">
+                                  <div className="text-xs font-black bg-black/60 px-3 py-1 rounded-sm border-l-2 border-red-500 uppercase tracking-widest">
+                                      CAM_{String(i + 1).padStart(2, '0')}
+                                  </div>
+                                  <div className="text-[10px] font-mono bg-black/40 px-2 py-0.5 rounded-sm text-white/60">
+                                      ID: {device.id.substring(0, 8)}
+                                  </div>
+                                  <div className="text-[10px] font-mono bg-black/40 px-2 py-0.5 rounded-sm text-white/60 uppercase">
+                                      NAME: {device.name || 'UNKNOWN'}
+                                  </div>
+                              </div>
+
+                              <div className="absolute bottom-6 right-6 font-mono text-[10px] text-white/40 bg-black/40 px-3 py-1 rounded-sm">
+                                  {Math.floor(Math.random() * 100 + 900)}MHz / {Math.floor(Math.random() * 30 + 10)}FPS
+                              </div>
+
+                              <div className="absolute inset-0 border-2 border-white/0 group-hover:border-white/10 transition-all pointer-events-none" />
+                          </div>
+                      ))}
+                      {connectedDevices.length === 0 && (
+                          <div className="col-span-3 flex flex-col items-center justify-center opacity-10">
+                              <ShieldAlert size={120} />
+                              <span className="text-2xl font-black uppercase tracking-[1em] mt-8">Empty_Network_Grid</span>
+                          </div>
+                      )}
+                  </div>
+
+                  <div className="h-1 bg-white/5 relative overflow-hidden rounded-full">
+                      <motion.div
+                        animate={{ x: ['-100%', '100%'] }}
+                        transition={{ duration: 3, repeat: Infinity, ease: "linear" }}
+                        className="absolute inset-y-0 w-1/3 bg-white/20 blur-md"
+                      />
+                  </div>
+              </motion.div>
+          )}
+      </AnimatePresence>
 
       {/* Header */}
       <header className="relative z-10 flex justify-between items-center bg-white/5 p-6 rounded-[24px] border border-white/10 backdrop-blur-md">
@@ -291,9 +373,16 @@ const App: React.FC = () => {
                                         <span className={`text-[10px] font-bold uppercase tracking-widest ${selectedChild === device.id ? 'text-white' : 'text-white/80'}`}>
                                             {device.name || 'UNKNOWN'}
                                         </span>
-                                        <span className="text-[8px] font-mono opacity-40">
-                                            ID:{device.id.substring(0, 6)}
-                                        </span>
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-[8px] font-mono opacity-40">
+                                                ID:{device.id.substring(0, 6)}
+                                            </span>
+                                            {device.lastSeen && (
+                                                <span className="text-[7px] font-mono text-green-500/60 font-bold uppercase">
+                                                    LIVE {Math.floor((Date.now() - device.lastSeen)/1000)}s
+                                                </span>
+                                            )}
+                                        </div>
                                     </div>
                                 </div>
                                 <span className="text-[8px] opacity-20 font-mono uppercase truncate max-w-[60px]">{device.activeApp || 'IDLE'}</span>

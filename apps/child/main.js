@@ -90,13 +90,19 @@ function setupShortcuts() {
 }
 
 ipcMain.on('VERIFY_PASSWORD', (event, password) => {
-  console.log('Verifying password:', password, 'against:', PASSWORDS);
-  if (password === PASSWORDS.exit) {
+  // Re-read env vars just in case they were updated in the environment (unlikely but possible if using a watch tool)
+  const exitPass = process.env.MADOS_PASS_EXIT || PASSWORDS.exit;
+  const eventPass = process.env.MADOS_PASS_EVENT || PASSWORDS.event;
+  const adminPass = process.env.MADOS_PASS_ADMIN || PASSWORDS.admin;
+
+  console.log('Verifying password:', password, 'against:', { exitPass, eventPass, adminPass });
+
+  if (password === exitPass) {
     isAllowExit = true;
     app.quit();
-  } else if (password === PASSWORDS.event) {
+  } else if (password === eventPass) {
     event.reply('PASSWORD_ACTION', 'TRIGGER_EVENT');
-  } else if (password === PASSWORDS.admin) {
+  } else if (password === adminPass) {
     event.reply('PASSWORD_ACTION', 'SHOW_SETUP');
   } else {
     event.reply('PASSWORD_RESULT', false);

@@ -97,6 +97,13 @@ io.on('connection', (socket) => {
         });
     }
   });
+
+  socket.on('HEARTBEAT', (data) => {
+      if (devices.has(deviceId)) {
+          devices.get(deviceId).lastSeen = Date.now();
+          updateDeviceList();
+      }
+  });
 });
 
 function updateDeviceList() {

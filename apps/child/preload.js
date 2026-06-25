@@ -2,7 +2,7 @@ const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('electron', {
   send: (channel, data) => {
-    const validChannels = ['VERIFY_PASSWORD', 'START_DISCOVERY', 'SET_KIOSK'];
+    const validChannels = ['VERIFY_PASSWORD', 'START_DISCOVERY', 'SET_KIOSK', 'UPDATE_CONFIG'];
     if (validChannels.includes(channel)) {
       ipcRenderer.send(channel, data);
     }
