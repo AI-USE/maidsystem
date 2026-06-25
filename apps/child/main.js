@@ -2,6 +2,7 @@ const { app, BrowserWindow, ipcMain, globalShortcut } = require('electron');
 const path = require('path');
 const dgram = require('dgram');
 const fs = require('fs');
+require('dotenv').config({ path: path.join(__dirname, '.env') });
 
 let mainWindow;
 let isAllowExit = false;
@@ -10,21 +11,21 @@ let kioskMode = true;
 const CONFIG_PATH = path.join(app.getPath('userData'), 'mados_config.json');
 
 let PASSWORDS = {
-  exit: 'MADREST104',
-  event: 'EVT_TRIGGER_99',
-  admin: 'ADMIN_DASH'
+  exit: process.env.MADOS_PASS_EXIT || 'MADREST104',
+  event: process.env.MADOS_PASS_EVENT || 'EVT_TRIGGER_99',
+  admin: process.env.MADOS_PASS_ADMIN || 'ADMIN_DASH'
 };
 
 function loadConfig() {
     try {
         if (fs.existsSync(CONFIG_PATH)) {
             const data = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
-            if (data.passwords) {
-                // Support both cases for backward compatibility during transition
-                PASSWORDS.exit = data.passwords.exit || data.passwords.EXIT || PASSWORDS.exit;
-                PASSWORDS.event = data.passwords.event || data.passwords.EVENT || PASSWORDS.event;
-                PASSWORDS.admin = data.passwords.admin || data.passwords.DASHBOARD || PASSWORDS.admin;
-            }
+
+            // Environment variables take precedence if they exist
+            PASSWORDS.exit = process.env.MADOS_PASS_EXIT || data.passwords?.exit || PASSWORDS.exit;
+            PASSWORDS.event = process.env.MADOS_PASS_EVENT || data.passwords?.event || PASSWORDS.event;
+            PASSWORDS.admin = process.env.MADOS_PASS_ADMIN || data.passwords?.admin || PASSWORDS.admin;
+
             if (data.kiosk !== undefined) kioskMode = data.kiosk;
             console.log('Config loaded into memory:', PASSWORDS);
         }
@@ -118,9 +119,10 @@ ipcMain.on('SET_KIOSK', (event, enabled) => {
 ipcMain.on('UPDATE_CONFIG', (event, config) => {
     console.log('Updating config in main process:', config);
     if (config.passwords) {
-        PASSWORDS.exit = config.passwords.exit;
-        PASSWORDS.event = config.passwords.event;
-        PASSWORDS.admin = config.passwords.admin;
+        // Only update if environment variables are NOT set
+        PASSWORDS.exit = process.env.MADOS_PASS_EXIT || config.passwords.exit;
+        PASSWORDS.event = process.env.MADOS_PASS_EVENT || config.passwords.event;
+        PASSWORDS.admin = process.env.MADOS_PASS_ADMIN || config.passwords.admin;
     }
     if (config.kiosk !== undefined) {
         kioskMode = config.kiosk;

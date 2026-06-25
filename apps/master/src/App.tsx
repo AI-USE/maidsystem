@@ -26,6 +26,7 @@ import { DeviceStats } from './components/DeviceStats';
 
 interface DeviceInfo {
   id: string;
+  name?: string;
   activeApp?: string;
   online: boolean;
 }
@@ -286,9 +287,14 @@ const App: React.FC = () => {
                             >
                                 <div className="flex items-center gap-3">
                                     <div className={`w-1.5 h-1.5 rounded-full ${device.online ? 'bg-green-400' : 'bg-red-400'} animate-pulse`} />
-                                    <span className={`text-[10px] font-mono uppercase tracking-widest ${selectedChild === device.id ? 'text-white' : 'text-white/60'}`}>
-                                        ID:{device.id.substring(0, 6)}
-                                    </span>
+                                    <div className="flex flex-col items-start">
+                                        <span className={`text-[10px] font-bold uppercase tracking-widest ${selectedChild === device.id ? 'text-white' : 'text-white/80'}`}>
+                                            {device.name || 'UNKNOWN'}
+                                        </span>
+                                        <span className="text-[8px] font-mono opacity-40">
+                                            ID:{device.id.substring(0, 6)}
+                                        </span>
+                                    </div>
                                 </div>
                                 <span className="text-[8px] opacity-20 font-mono uppercase truncate max-w-[60px]">{device.activeApp || 'IDLE'}</span>
                             </button>

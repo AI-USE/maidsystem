@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Wifi, Shield, ArrowRight, CheckCircle2, XCircle, Loader2, Eye, EyeOff } from 'lucide-react';
+import { Wifi, Shield, ArrowRight, CheckCircle2, XCircle, Loader2, Eye, EyeOff, Monitor } from 'lucide-react';
 
 interface SetupProps {
   onComplete: () => void;
@@ -8,6 +8,7 @@ interface SetupProps {
 
 export const Setup: React.FC<SetupProps> = ({ onComplete }) => {
   const [step, setStep] = useState(1);
+  const [deviceName, setDeviceName] = useState(localStorage.getItem('deviceName') || '');
   const [ip, setIp] = useState(localStorage.getItem('masterUrl')?.replace('http://', '').replace(':3030', '') || '');
   const [kioskEnabled, setKioskEnabled] = useState(true);
   const [testStatus, setTestStatus] = useState<'idle' | 'testing' | 'success' | 'error'>('idle');
@@ -41,6 +42,7 @@ export const Setup: React.FC<SetupProps> = ({ onComplete }) => {
 
   const saveAndNext = () => {
       if (step === 1) {
+          localStorage.setItem('deviceName', deviceName || 'UNNAMED_TERMINAL');
           const finalIp = ip.startsWith('http') ? ip : `http://${ip}:3030`;
           localStorage.setItem('masterUrl', finalIp);
           setStep(2);
@@ -90,12 +92,24 @@ export const Setup: React.FC<SetupProps> = ({ onComplete }) => {
         {step === 1 && (
             <div className="w-full">
                 <div className="w-16 h-16 bg-white/5 rounded-[24px] flex items-center justify-center mx-auto mb-8 border border-white/10">
-                    <Wifi className="text-white/60" size={32} />
+                    <Monitor className="text-white/60" size={32} />
                 </div>
-                <h1 className="text-2xl font-bold mb-2 tracking-tight">ネットワーク設定</h1>
-                <p className="text-sm text-white/40 mb-10">親機端末のIPアドレスを入力してください。</p>
+                <h1 className="text-2xl font-bold mb-2 tracking-tight">端末識別設定</h1>
+                <p className="text-sm text-white/40 mb-8">端末名と親機のIPアドレスを入力してください。</p>
+
+                <div className="mb-6">
+                    <label className="text-[10px] uppercase tracking-widest text-white/40 mb-2 block text-left ml-2">端末名（識別用）</label>
+                    <input
+                        type="text"
+                        placeholder="TERMINAL_01"
+                        className="w-full bg-white/5 border border-white/10 rounded-2xl px-6 py-4 outline-none focus:border-white/30 transition-all font-mono"
+                        value={deviceName}
+                        onChange={(e) => setDeviceName(e.target.value)}
+                    />
+                </div>
 
                 <div className="relative mb-4">
+                    <label className="text-[10px] uppercase tracking-widest text-white/40 mb-2 block text-left ml-2">親機IPアドレス</label>
                     <input
                         type="text"
                         placeholder="0.0.0.0"

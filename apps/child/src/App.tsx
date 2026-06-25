@@ -22,7 +22,7 @@ import { HiddenCamera } from './components/HiddenCamera';
 const App: React.FC = () => {
   const [activeAppId, setActiveAppId] = useState<string | null>(null);
   const [showExitModal, setShowExitModal] = useState(false);
-  const [showSetup, setShowSetup] = useState(!localStorage.getItem('masterUrl'));
+  const [showSetup, setShowSetup] = useState(true); // Always show management dashboard on startup
   const [exitPassword, setExitPassword] = useState('');
   const [showPasswordRaw, setShowPasswordRaw] = useState(false);
   const [passwordError, setPasswordError] = useState(false);
@@ -205,7 +205,10 @@ const App: React.FC = () => {
   const activeApp = useMemo(() => getPluginById(activeAppId), [activeAppId]);
 
   if (showSetup) {
-      return <Setup onComplete={() => setShowSetup(false)} />;
+      return <Setup onComplete={() => {
+          setShowSetup(false);
+          setMasterUrl(localStorage.getItem('masterUrl'));
+      }} />;
   }
 
   return (

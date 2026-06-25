@@ -115,7 +115,12 @@ function updatePendingApprovals() {
 ipcMain.on('APPROVE_PAIRING', (event, deviceId) => {
     const pending = pendingApprovals.get(deviceId);
     if (pending) {
-        devices.set(deviceId, { id: deviceId, online: true, activeApp: 'IDLE' });
+        devices.set(deviceId, {
+            id: deviceId,
+            name: pending.name,
+            online: true,
+            activeApp: 'IDLE'
+        });
         pending.socket.emit('PAIRING_RESULT', { success: true });
         pendingApprovals.delete(deviceId);
         updateDeviceList();
