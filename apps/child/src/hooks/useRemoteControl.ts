@@ -8,6 +8,15 @@ export const useRemoteControl = (masterUrl: string | null) => {
   const [isConnected, setIsConnected] = useState(false);
   const [isPaired, setIsPaired] = useState(localStorage.getItem('isPaired') === 'true');
 
+  const getDeviceId = () => {
+      let id = localStorage.getItem('persistentDeviceId');
+      if (!id) {
+          id = 'MADOS_' + Math.random().toString(36).substring(2, 11).toUpperCase();
+          localStorage.setItem('persistentDeviceId', id);
+      }
+      return id;
+  };
+
   useEffect(() => {
     if (!masterUrl) {
         setIsConnected(false);
@@ -24,11 +33,12 @@ export const useRemoteControl = (masterUrl: string | null) => {
     newSocket.on('connect', () => {
       setIsConnected(true);
       console.log('Connected to Master OS');
-      // If we are not paired, we should request pairing immediately
-      if (!isPaired) {
-          const deviceName = localStorage.getItem('deviceName') || `DEVICE_${newSocket.id.substring(0, 4)}`;
-          newSocket.emit('REQUEST_PAIRING', { name: deviceName });
-      }
+
+      const deviceName = localStorage.getItem('deviceName') || `DEVICE_${newSocket.id.substring(0, 4)}`;
+      newSocket.emit('REQUEST_PAIRING', {
+          id: getDeviceId(),
+          name: deviceName
+      });
     });
 
     newSocket.on('PAIRING_RESULT', (data: { success: boolean }) => {

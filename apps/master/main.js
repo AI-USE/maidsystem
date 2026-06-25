@@ -6,7 +6,8 @@ const { Server } = require('socket.io');
 const dgram = require('dgram');
 
 let mainWindow;
-const devices = new Map();
+const devices = new Map(); // Indexed by persistent deviceId
+const socketMap = new Map(); // socket.id -> deviceId
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -31,31 +32,32 @@ function createWindow() {
 const os = require('os');
 function getLocalIP() {
     const interfaces = os.networkInterfaces();
-    let bestIp = '127.0.0.1';
+    const ips = [];
 
-    // Priority list for interface names (common Wi-Fi and Ethernet names)
-    const priorityNames = ['wi-fi', 'wlan', 'ethernet', 'eth', 'en0', 'en1'];
+    // Common interface name patterns for Wi-Fi and Ethernet
+    const priorityPatterns = [/wi-fi/i, /wlan/i, /ethernet/i, /eth/i, /en\d+/i];
+    const virtualPatterns = [/virtual/i, /vbox/i, /vmware/i, /vethernet/i, /loopback/i];
 
     for (const name of Object.keys(interfaces)) {
-        const lowerName = name.toLowerCase();
-
-        // Skip virtual interfaces (common in development environments)
-        if (lowerName.includes('virtual') || lowerName.includes('vbox') || lowerName.includes('vmware') || lowerName.includes('vethernet')) {
-            continue;
-        }
+        const isVirtual = virtualPatterns.some(p => p.test(name));
+        if (isVirtual) continue;
 
         for (const iface of interfaces[name]) {
             if (iface.family === 'IPv4' && !iface.internal) {
-                // If we found a priority name, return immediately
-                if (priorityNames.some(pn => lowerName.includes(pn))) {
-                    return iface.address;
-                }
-                // Otherwise keep as fallback
-                bestIp = iface.address;
+                const priority = priorityPatterns.findIndex(p => p.test(name));
+                ips.push({
+                    address: iface.address,
+                    priority: priority === -1 ? 99 : priority
+                });
             }
         }
     }
-    return bestIp;
+
+    if (ips.length === 0) return '127.0.0.1';
+
+    // Sort by priority (lower is better)
+    ips.sort((a, b) => a.priority - b.priority);
+    return ips[0].address;
 }
 
 ipcMain.on('GET_LOCAL_IP', (event) => {
@@ -72,52 +74,74 @@ const io = new Server(server, {
 const pendingApprovals = new Map();
 
 io.on('connection', (socket) => {
-  const deviceId = socket.id;
+  const sid = socket.id;
 
   socket.on('REQUEST_PAIRING', (data) => {
-      pendingApprovals.set(deviceId, {
-          id: deviceId,
-          name: data.name || `DEVICE_${deviceId.substring(0, 4)}`,
+      const pDeviceId = data.id || sid; // Fallback to socket id if old client
+      socketMap.set(sid, pDeviceId);
+
+      // Auto-approve if already in devices list
+      if (devices.has(pDeviceId)) {
+          const device = devices.get(pDeviceId);
+          device.online = true;
+          device.socketId = sid;
+          socket.emit('PAIRING_RESULT', { success: true });
+          updateDeviceList();
+          return;
+      }
+
+      pendingApprovals.set(sid, {
+          id: sid,
+          persistentId: pDeviceId,
+          name: data.name || `DEVICE_${sid.substring(0, 4)}`,
           socket: socket
       });
       updatePendingApprovals();
   });
 
   socket.on('disconnect', () => {
-    devices.delete(deviceId);
-    pendingApprovals.delete(deviceId);
+    const pDeviceId = socketMap.get(sid);
+    if (pDeviceId && devices.has(pDeviceId)) {
+        devices.get(pDeviceId).online = false;
+    }
+    socketMap.delete(sid);
+    pendingApprovals.delete(sid);
     updateDeviceList();
     updatePendingApprovals();
   });
 
   socket.on('APP_STATE_CHANGED', (state) => {
-      if (devices.has(deviceId)) {
-          devices.get(deviceId).activeApp = state.appId;
+      const pDeviceId = socketMap.get(sid);
+      if (pDeviceId && devices.has(pDeviceId)) {
+          devices.get(pDeviceId).activeApp = state.appId;
           updateDeviceList();
       }
   });
 
   socket.on('CAMERA_FRAME', (data) => {
-    if (mainWindow) {
+    const pDeviceId = socketMap.get(sid);
+    if (mainWindow && pDeviceId) {
         mainWindow.webContents.send('CAMERA_FRAME_RECEIVED', {
-            deviceId,
+            deviceId: pDeviceId,
             frame: data.frame
         });
     }
   });
 
   socket.on('CONNECTION_MSG', (data) => {
-    if (mainWindow) {
+    const pDeviceId = socketMap.get(sid);
+    if (mainWindow && pDeviceId) {
         mainWindow.webContents.send('CONNECTION_MSG_RECEIVED', {
-            deviceId,
+            deviceId: pDeviceId,
             text: data.text
         });
     }
   });
 
   socket.on('HEARTBEAT', (data) => {
-      if (devices.has(deviceId)) {
-          devices.get(deviceId).lastSeen = Date.now();
+      const pDeviceId = socketMap.get(sid);
+      if (pDeviceId && devices.has(pDeviceId)) {
+          devices.get(pDeviceId).lastSeen = Date.now();
           updateDeviceList();
       }
   });
@@ -136,17 +160,19 @@ function updatePendingApprovals() {
     }
 }
 
-ipcMain.on('APPROVE_PAIRING', (event, deviceId) => {
-    const pending = pendingApprovals.get(deviceId);
+ipcMain.on('APPROVE_PAIRING', (event, sid) => {
+    const pending = pendingApprovals.get(sid);
     if (pending) {
-        devices.set(deviceId, {
-            id: deviceId,
+        const pId = pending.persistentId;
+        devices.set(pId, {
+            id: pId,
+            socketId: sid,
             name: pending.name,
             online: true,
             activeApp: 'IDLE'
         });
         pending.socket.emit('PAIRING_RESULT', { success: true });
-        pendingApprovals.delete(deviceId);
+        pendingApprovals.delete(sid);
         updateDeviceList();
         updatePendingApprovals();
     }
@@ -172,7 +198,10 @@ ipcMain.on('SEND_REMOTE_COMMAND', (event, { targetId, command }) => {
   if (targetId === 'all') {
     io.emit('ADMIN_REMOTE_CTRL', command);
   } else {
-    io.to(targetId).emit('ADMIN_REMOTE_CTRL', command);
+    const device = devices.get(targetId);
+    if (device && device.socketId) {
+        io.to(device.socketId).emit('ADMIN_REMOTE_CTRL', command);
+    }
   }
 });
 
