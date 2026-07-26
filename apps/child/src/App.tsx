@@ -71,16 +71,20 @@ const App: React.FC = () => {
 
   // Security Camera Active Channel (1 or 2)
   const [activeCamChannel, setActiveCamChannel] = useState<number>(1);
+  const cam1VideoRef = useRef<HTMLVideoElement>(null);
+  const cam2VideoRef = useRef<HTMLVideoElement>(null);
 
   // Maid controls state mock
   const [maidActive, setMaidActive] = useState(true);
   const [tempVal, setTempVal] = useState(21.4);
   const [entranceLocked, setEntranceLocked] = useState(true);
 
-  // Execution stop state mock
+  // Execution stop state mock (Only allowed <= 20s, exactly 1 attempt)
   const [executionOverrideInput, setExecutionOverrideInput] = useState('');
   const [executionAborted, setExecutionAborted] = useState(false);
   const [overrideError, setOverrideError] = useState(false);
+  const [overrideSubmitted, setOverrideSubmitted] = useState(false);
+  const [overrideText, setOverrideText] = useState('');
 
   // Remote state
   const [cameraActive, setCameraActive] = useState(false);
@@ -315,6 +319,13 @@ const App: React.FC = () => {
         setPuzzleInput('');
         setPuzzleError(false);
         setExecutionAborted(false);
+        setOverrideSubmitted(false);
+        setOverrideText('');
+        break;
+      }
+      case 'PUZZLE_BROADCAST_VIDEO': {
+        setVideoPlaying(true);
+        setVideoProgress(0);
         break;
       }
     }
@@ -357,15 +368,14 @@ const App: React.FC = () => {
   };
 
   const handleVerifyExecutionOverride = () => {
-     const eventPass = localStorage.getItem('pass_event') || 'EVT_TRIGGER_99';
-     if (executionOverrideInput === eventPass) {
-         setExecutionAborted(true);
-         setTimerSeconds(null);
-         setOverrideError(false);
-         emit('CONNECTION_MSG', { text: 'OVERRIDE_SUCCESSFUL: Execution stopped.' });
-     } else {
-         setOverrideError(true);
-     }
+     // Guard: Only allowed when timerSeconds <= 20 and not yet submitted
+     if (timerSeconds === null || timerSeconds > 20 || overrideSubmitted) return;
+
+     setOverrideSubmitted(true);
+     setOverrideText("処刑停止を申請しました。残り時間をお待ちください。");
+
+     // Send password proposal to Master Console
+     emit('CONNECTION_MSG', { text: `OVERRIDE_SUBMITTED: Submitted Passcode proposal: "${executionOverrideInput}"` });
   };
 
   if (showSetup) {
@@ -382,6 +392,19 @@ const App: React.FC = () => {
   return (
     <OSContext.Provider value={osContextValue}>
     <div className={`relative h-screen w-screen bg-[#050508] text-[#eaeaea] overflow-hidden ${isShaking ? 'animate-shake' : ''} ${isFrozen ? 'pointer-events-none select-none' : ''}`}>
+
+      {/* Screen Complete Blackout Phase once countdown timerSeconds reaches exactly 0 */}
+      <AnimatePresence>
+          {timerSeconds === 0 && !executionAborted && (
+               <motion.div
+                 initial={{ opacity: 0 }}
+                 animate={{ opacity: 1 }}
+                 className="fixed inset-0 z-[10000] bg-[#000000] flex flex-col items-center justify-center text-transparent cursor-none select-none pointer-events-none"
+               >
+                    [SYSTEM_TERMINATED]
+               </motion.div>
+          )}
+      </AnimatePresence>
 
       <AnimatePresence>
           {/* Phase 0: Preparation Screen with START button */}
@@ -769,20 +792,53 @@ const App: React.FC = () => {
                                   {/* Fullscreen Video Camera Module (Looping mp4 files with Toggle controls) */}
                                   {openAppId === 'camera' && (
                                       <div className="h-full flex flex-col gap-6">
-                                          {/* Camera Channel Tabs */}
-                                          <div className="flex gap-4">
-                                               <button
-                                                 onClick={() => setActiveCamChannel(1)}
-                                                 className={`px-6 py-3 rounded-xl border text-xs font-bold uppercase tracking-widest transition-all ${activeCamChannel === 1 ? 'bg-red-500/10 border-red-500 text-white' : 'bg-white/5 border-white/10 text-white/40 hover:bg-white/10'}`}
-                                               >
-                                                    CAM_01: エントランス
-                                               </button>
-                                               <button
-                                                 onClick={() => setActiveCamChannel(2)}
-                                                 className={`px-6 py-3 rounded-xl border text-xs font-bold uppercase tracking-widest transition-all ${activeCamChannel === 2 ? 'bg-red-500/10 border-red-500 text-white' : 'bg-white/5 border-white/10 text-white/40 hover:bg-white/10'}`}
-                                               >
-                                                    CAM_02: 制御室
-                                               </button>
+                                          {/* Camera Channel Tabs and Playback control skip/rewind buttons */}
+                                          <div className="flex justify-between items-center bg-white/5 p-4 rounded-2xl border border-white/5">
+                                               <div className="flex gap-4">
+                                                    <button
+                                                      onClick={() => setActiveCamChannel(1)}
+                                                      className={`px-6 py-3 rounded-xl border text-xs font-bold uppercase tracking-widest transition-all ${activeCamChannel === 1 ? 'bg-red-500/10 border-red-500 text-white' : 'bg-white/5 border-white/10 text-white/40 hover:bg-white/10'}`}
+                                                    >
+                                                         CAM_01: エントランス
+                                                    </button>
+                                                    <button
+                                                      onClick={() => setActiveCamChannel(2)}
+                                                      className={`px-6 py-3 rounded-xl border text-xs font-bold uppercase tracking-widest transition-all ${activeCamChannel === 2 ? 'bg-red-500/10 border-red-500 text-white' : 'bg-white/5 border-white/10 text-white/40 hover:bg-white/10'}`}
+                                                    >
+                                                         CAM_02: 制御室
+                                                    </button>
+                                               </div>
+
+                                               {/* Video time manipulation control buttons */}
+                                               <div className="flex items-center gap-2">
+                                                    <button
+                                                      onClick={() => {
+                                                          const ref = activeCamChannel === 1 ? cam1VideoRef : cam2VideoRef;
+                                                          if (ref.current) ref.current.currentTime = 0;
+                                                      }}
+                                                      className="px-4 py-2 bg-white/5 hover:bg-white/10 rounded-xl border border-white/10 text-[10px] font-bold uppercase tracking-wider"
+                                                    >
+                                                         最初から
+                                                    </button>
+                                                    <button
+                                                      onClick={() => {
+                                                          const ref = activeCamChannel === 1 ? cam1VideoRef : cam2VideoRef;
+                                                          if (ref.current) ref.current.currentTime = Math.max(0, ref.current.currentTime - 10);
+                                                      }}
+                                                      className="px-4 py-2 bg-white/5 hover:bg-white/10 rounded-xl border border-white/10 text-[10px] font-bold uppercase tracking-wider"
+                                                    >
+                                                         10秒戻し
+                                                    </button>
+                                                    <button
+                                                      onClick={() => {
+                                                          const ref = activeCamChannel === 1 ? cam1VideoRef : cam2VideoRef;
+                                                          if (ref.current) ref.current.currentTime = ref.current.currentTime + 10;
+                                                      }}
+                                                      className="px-4 py-2 bg-white/5 hover:bg-white/10 rounded-xl border border-white/10 text-[10px] font-bold uppercase tracking-wider"
+                                                    >
+                                                         10秒送り
+                                                    </button>
+                                               </div>
                                           </div>
 
                                           <div className="flex-1 bg-black rounded-3xl border border-white/10 overflow-hidden relative aspect-video max-w-4xl mx-auto w-full flex items-center justify-center">
@@ -790,6 +846,7 @@ const App: React.FC = () => {
                                                {activeCamChannel === 1 ? (
                                                     <video
                                                       key="cam1"
+                                                      ref={cam1VideoRef}
                                                       src="/videos/cam1.mp4"
                                                       autoPlay
                                                       loop
@@ -800,6 +857,7 @@ const App: React.FC = () => {
                                                ) : (
                                                     <video
                                                       key="cam2"
+                                                      ref={cam2VideoRef}
                                                       src="/videos/cam2.mp4"
                                                       autoPlay
                                                       loop
@@ -868,18 +926,25 @@ const App: React.FC = () => {
                                                 <p className="text-[10px] text-white/40 mt-1 uppercase">処刑停止暗号コードを入力してシステムをオーバーライドしてください。</p>
                                            </div>
 
-                                           {executionAborted ? (
-                                               <div className="p-6 bg-green-950/20 border border-green-500/30 rounded-2xl flex flex-col items-center gap-2">
-                                                    <CheckCircle2 className="text-green-400" size={32} />
-                                                    <span className="text-xs font-bold text-green-400 uppercase tracking-widest">処刑シーケンス停止完了</span>
-                                                    <span className="text-[9px] text-white/40 uppercase font-mono">STATUS: SYSTEM_SECURE_OVERRIDE</span>
+                                           {overrideSubmitted ? (
+                                               <div className="p-6 bg-red-950/20 border border-red-900/30 rounded-2xl flex flex-col items-center gap-2">
+                                                    <CheckCircle2 className="text-red-400 animate-pulse" size={32} />
+                                                    <span className="text-xs font-bold text-red-400 uppercase tracking-widest">{overrideText}</span>
+                                                    <span className="text-[9px] text-white/40 uppercase font-mono">STATUS: OVERRIDE_REQUESTED</span>
                                                </div>
                                            ) : (
                                                <div className="space-y-4">
+                                                    <div className="p-4 rounded-2xl bg-white/5 border border-white/5 text-[11px] leading-relaxed text-white/60 text-left font-mono">
+                                                         🔒 **処刑停止申請の制限条件**:
+                                                         - この暗証コード送信機能は、残り時間が **20秒以下** になった時のみ有効化されます。
+                                                         - 送信の試行チャンスは **1回限り（ワンショット）** です。慎重に入力してください。
+                                                    </div>
+
                                                     <input
                                                        type="password"
-                                                       placeholder="ENTER STOP CODE"
-                                                       className="w-full bg-black/50 border border-red-950/50 rounded-xl px-4 py-3 text-center outline-none focus:border-red-900 text-lg font-mono tracking-[0.4em] text-red-500"
+                                                       disabled={timerSeconds === null || timerSeconds > 20}
+                                                       placeholder={timerSeconds !== null && timerSeconds > 20 ? `残り ${timerSeconds} 秒で有効化` : "STOP CODE を入力"}
+                                                       className={`w-full bg-black/50 border rounded-xl px-4 py-3 text-center outline-none focus:border-red-900 text-lg font-mono tracking-[0.4em] text-red-500 ${(timerSeconds === null || timerSeconds > 20) ? 'opacity-30 cursor-not-allowed border-white/5' : 'border-red-950/50'}`}
                                                        value={executionOverrideInput}
                                                        onChange={(e) => {
                                                            setExecutionOverrideInput(e.target.value);
@@ -887,14 +952,10 @@ const App: React.FC = () => {
                                                        }}
                                                        onKeyDown={(e) => e.key === 'Enter' && handleVerifyExecutionOverride()}
                                                     />
-                                                    {overrideError && (
-                                                         <div className="text-[10px] text-red-500 font-bold uppercase tracking-widest animate-pulse">
-                                                              コード不一致: 認証エラー
-                                                         </div>
-                                                    )}
                                                     <button
+                                                      disabled={timerSeconds === null || timerSeconds > 20 || overrideSubmitted}
                                                       onClick={handleVerifyExecutionOverride}
-                                                      className="w-full py-3 rounded-xl bg-red-950/40 hover:bg-red-950/60 border border-red-900/40 text-red-400 font-bold uppercase text-[10px] tracking-widest transition-colors"
+                                                      className={`w-full py-3 rounded-xl font-bold uppercase text-[10px] tracking-widest transition-colors ${(timerSeconds === null || timerSeconds > 20) ? 'bg-white/5 border border-white/5 text-white/20 cursor-not-allowed' : 'bg-red-950/40 hover:bg-red-950/60 border border-red-900/40 text-red-400'}`}
                                                     >
                                                       処刑停止指令を実行
                                                     </button>

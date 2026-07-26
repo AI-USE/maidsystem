@@ -560,7 +560,7 @@ const App: React.FC = () => {
 
                          <div className="w-full h-[1px] bg-white/10 my-4" />
 
-                         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 w-full">
+                         <div className="grid grid-cols-1 md:grid-cols-4 gap-6 w-full">
                              <button
                                  onClick={() => sendCommand('PUZZLE_START')}
                                  className="flex flex-col items-center gap-4 p-6 bg-green-500/10 hover:bg-green-500/20 border border-green-500/30 hover:border-green-500/50 rounded-3xl transition-all group"
@@ -597,6 +597,19 @@ const App: React.FC = () => {
                                  <div className="text-center">
                                      <div className="text-xs font-black text-blue-400 uppercase tracking-widest">再開 / リスタート</div>
                                      <div className="text-[9px] text-white/40 mt-1 uppercase">Puzzle_Restart</div>
+                                 </div>
+                             </button>
+
+                             <button
+                                 onClick={() => sendCommand('PUZZLE_BROADCAST_VIDEO')}
+                                 className="flex flex-col items-center gap-4 p-6 bg-purple-500/10 hover:bg-purple-500/20 border border-purple-500/30 hover:border-purple-500/50 rounded-3xl transition-all group"
+                             >
+                                 <div className="p-4 bg-purple-500/20 text-purple-400 rounded-2xl group-hover:scale-110 transition-transform">
+                                     <Video size={24} />
+                                 </div>
+                                 <div className="text-center">
+                                     <div className="text-xs font-black text-purple-400 uppercase tracking-widest">一斉動画再生</div>
+                                     <div className="text-[9px] text-white/40 mt-1 uppercase">Broadcast_Video</div>
                                  </div>
                              </button>
                          </div>

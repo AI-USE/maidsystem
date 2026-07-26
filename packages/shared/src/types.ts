@@ -25,7 +25,8 @@ export type CommandType =
   | 'INJECT_LOG'
   | 'PUZZLE_START'
   | 'PUZZLE_STOP'
-  | 'PUZZLE_RESTART';
+  | 'PUZZLE_RESTART'
+  | 'PUZZLE_BROADCAST_VIDEO';
 
 export interface RemoteCommand {
   type: CommandType;
