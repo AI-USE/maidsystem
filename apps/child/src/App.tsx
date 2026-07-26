@@ -53,7 +53,14 @@ const App: React.FC = () => {
   const [showPuzzleInputRaw, setShowPuzzleInputRaw] = useState(false);
   const [puzzleError, setPuzzleError] = useState(false);
 
-  // Admin Power Button Password Prompt State
+  // Admin Desktop Floating PDF 2 Window State
+  const [adminPdfOpen, setAdminPdfOpen] = useState(false);
+
+  // Fullscreen unskippable video state
+  const [videoPlaying, setVideoPlaying] = useState(false);
+  const [videoProgress, setVideoProgress] = useState(0);
+
+  // Admin Power Button Password Prompt State (using pass_admin)
   const [showPowerPrompt, setShowPowerPrompt] = useState(false);
   const [powerInput, setPowerInput] = useState('');
   const [powerError, setPowerError] = useState(false);
@@ -121,6 +128,39 @@ const App: React.FC = () => {
     }, 1000);
     return () => clearInterval(timer);
   }, []);
+
+  // Delay unskippable video 3 seconds after booting into Admin Desktop
+  useEffect(() => {
+    if (puzzleState === 'admin_desktop') {
+      setAdminPdfOpen(true);
+      const videoTimeout = setTimeout(() => {
+        setVideoPlaying(true);
+        setVideoProgress(0);
+      }, 3000);
+
+      return () => clearTimeout(videoTimeout);
+    } else {
+      setVideoPlaying(false);
+    }
+  }, [puzzleState]);
+
+  // Handle mock video playback progress and automatic dismissal
+  useEffect(() => {
+    let interval: any;
+    if (videoPlaying) {
+      interval = setInterval(() => {
+        setVideoProgress(prev => {
+          if (prev >= 100) {
+            clearInterval(interval);
+            setVideoPlaying(false);
+            return 100;
+          }
+          return prev + 1; // 100 steps total, takes ~10 seconds at 100ms interval
+        });
+      }, 100);
+    }
+    return () => clearInterval(interval);
+  }, [videoPlaying]);
 
   // Execution Countdown Timer
   useEffect(() => {
@@ -294,8 +334,8 @@ const App: React.FC = () => {
   };
 
   const handlePowerVerifyPassword = () => {
-    const eventPass = localStorage.getItem('pass_event') || 'EVT_TRIGGER_99';
-    if (powerInput === eventPass) {
+    const adminPass = localStorage.getItem('pass_admin') || 'ADMIN_DASH';
+    if (powerInput === adminPass) {
       setShowPowerPrompt(false);
       setPowerInput('');
       setPowerError(false);
@@ -444,6 +484,74 @@ const App: React.FC = () => {
                   </div>
               </motion.div>
           )}
+
+          {/* Phase 5: Unskippable Fullscreen Video Player Overlay */}
+          {videoPlaying && (
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="fixed inset-0 z-[2000] bg-black flex flex-col items-center justify-center p-8 font-mono overflow-hidden select-none"
+              >
+                  {/* Cyber Scanline Grid Overlay */}
+                  <div className="scanlines z-0" />
+
+                  {/* Flashing hazard warning elements */}
+                  <div className="absolute top-10 left-10 flex items-center gap-4 text-red-500 animate-pulse">
+                      <AlertTriangle size={32} />
+                      <div className="text-left">
+                          <div className="text-sm font-black tracking-widest">CRITICAL BROADCAST</div>
+                          <div className="text-[10px] text-white/40 uppercase">DIRECT LINK STABLE</div>
+                      </div>
+                  </div>
+
+                  <div className="absolute top-10 right-10 flex items-center gap-2 px-3 py-1 bg-red-950/40 border border-red-500/30 rounded text-red-500 font-bold text-[10px] uppercase tracking-widest animate-pulse">
+                      ● LIVE RECEPTION
+                  </div>
+
+                  {/* Main Player Screen Container simulating real security playback */}
+                  <div className="relative w-full max-w-4xl border border-white/10 rounded-3xl overflow-hidden aspect-video bg-zinc-950 flex flex-col items-center justify-center p-12">
+                       {/* Interference Static Static Bars */}
+                       <div className="absolute inset-0 opacity-[0.03] bg-[radial-gradient(#ffffff_2px,transparent_2px)] [background-size:16px_16px]" />
+
+                       <div className="text-center space-y-6 max-w-xl relative z-10">
+                            <motion.div
+                              animate={{ scale: [1, 1.05, 1] }}
+                              transition={{ repeat: Infinity, duration: 2 }}
+                              className="w-20 h-20 bg-red-950/20 border border-red-500 rounded-full flex items-center justify-center mx-auto text-red-500 shadow-[0_0_30px_rgba(239,68,68,0.2)]"
+                            >
+                                 <ShieldAlert size={40} className="animate-bounce" />
+                            </motion.div>
+
+                            <div>
+                                 <h1 className="text-2xl font-black text-white tracking-[0.3em] uppercase">緊急強制システム介入配信</h1>
+                                 <p className="text-xs text-red-500/80 uppercase font-bold tracking-widest mt-2">
+                                      UNAUTHORIZED OVERRIDE SIGNAL DETECTED
+                                 </p>
+                            </div>
+
+                            <div className="space-y-2 p-6 bg-black/60 rounded-2xl border border-white/5 text-left text-[11px] leading-relaxed text-white/60">
+                                 <div>[SYSTEM_STATUS] CRYPTO ENGINE SYNCHRONIZING WITH FLEET...</div>
+                                 <div>[TELEMETRY] CELL CORE DISSOLUTION TIME REMAINING: {Math.max(0, Math.floor((100 - videoProgress) / 10))}s</div>
+                                 <div className="text-red-500 font-bold animate-pulse">[WARN] INTERACTION IS TEMPORARILY SUSPENDED DURING FEED TRANSMISSION.</div>
+                            </div>
+                       </div>
+
+                       {/* Video Progress Overlay in Video Panel */}
+                       <div className="absolute bottom-6 inset-x-8 flex items-center gap-6">
+                            <span className="text-[10px] text-white/40 tracking-widest">00:{String(Math.floor((videoProgress / 100) * 12)).padStart(2, '0')}</span>
+                            <div className="flex-1 h-1.5 bg-white/10 rounded-full overflow-hidden">
+                                 <div className="h-full bg-red-500 transition-all duration-100" style={{ width: `${videoProgress}%` }} />
+                            </div>
+                            <span className="text-[10px] text-white/40 tracking-widest">00:12</span>
+                       </div>
+                  </div>
+
+                  <div className="mt-8 text-center text-xs text-white/30 uppercase tracking-[0.2em] animate-pulse">
+                       ※ この重要なビデオ配信が終了するまで、システム操作は一切ロックされます。
+                  </div>
+              </motion.div>
+          )}
       </AnimatePresence>
 
       <AnimatePresence>
@@ -583,7 +691,58 @@ const App: React.FC = () => {
 
         {/* State B: admin_desktop (GOV-CORE OS Desktop) */}
         {puzzleState === 'admin_desktop' && (
-            <div className="w-full h-full flex gap-8">
+            <div className="w-full h-full flex gap-8 relative">
+                {/* Float PDF 2 Overlay - Opens on startup default. Can be closed/reopened. */}
+                <AnimatePresence>
+                    {adminPdfOpen && (
+                        <motion.div
+                          initial={{ opacity: 0, y: 30, scale: 0.95 }}
+                          animate={{ opacity: 1, y: 0, scale: 1 }}
+                          exit={{ opacity: 0, y: 30, scale: 0.95 }}
+                          className="absolute inset-0 z-40 glass-panel border-red-950/40 bg-black/90 p-8 rounded-[32px] flex flex-col overflow-hidden shadow-[0_32px_64px_rgba(0,0,0,0.9)]"
+                        >
+                            <div className="flex items-center justify-between border-b border-white/5 pb-4 mb-6">
+                                 <div className="flex items-center gap-3">
+                                      <FileText className="text-red-500 animate-pulse" size={24} />
+                                      <div>
+                                          <h3 className="text-sm font-black text-white uppercase tracking-wider">管理者限定極秘データ_SEC_992.pdf</h3>
+                                          <p className="text-[9px] text-white/30 uppercase font-mono mt-1">Classification: LEVEL_05_CONFIDENTIAL</p>
+                                      </div>
+                                 </div>
+                                 <button
+                                   onClick={() => setAdminPdfOpen(false)}
+                                   className="p-2 hover:bg-white/10 rounded-full transition-colors text-white/40 hover:text-white"
+                                 >
+                                      <X size={18} />
+                                 </button>
+                            </div>
+
+                            <div className="flex-1 overflow-y-auto space-y-4 text-xs leading-relaxed font-mono text-white/70 pr-4">
+                                  <p className="font-bold text-white border-l-2 border-red-500 pl-2">GOV-CORE OS 管理セッション承認</p>
+                                  <p>
+                                     管理者モードへの移行が完了しました。施設内コンソールへのアクセス許可が完全に付与されました。
+                                     システム管理者以外は、以下の高度なセキュリティシステムを操作してはなりません。
+                                  </p>
+
+                                  <p className="font-bold text-white border-l-2 border-red-500 pl-2">処刑装置の強制作動解除</p>
+                                  <p>
+                                     現在動作中の緊急処刑処分シーケンスを解除するには、デスクトップ上の「処刑停止用パスワード入力」モジュールを立ち上げ、
+                                     システム暗証番号（イベント用パスワード）を入力して完全終了させてください。
+                                  </p>
+
+                                  <div className="p-4 bg-green-950/20 border border-green-900/30 rounded-xl text-green-400">
+                                       🔐 警告: メイドコントロールシステム内のエントランスゲートは現在ロックされています。プレイヤーを退出させる際は、「メイドコントロールシステム」からロックを解除してください。
+                                  </div>
+
+                                  <p className="font-bold text-white border-l-2 border-red-500 pl-2">防犯システム（カメラグリッド）</p>
+                                  <p>
+                                     施設内に配置された防犯用カメラ（防犯カメラシステム）のリアルタイム映像を確認し、生命活動が正常に行われているかを常に監視してください。
+                                  </p>
+                            </div>
+                        </motion.div>
+                    )}
+                </AnimatePresence>
+
                 {/* Left Desktop: PDF Viewer 2 & 3 Large Custom Software Apps */}
                 <div className="flex-1 flex flex-col gap-6">
                     {/* Active Plugin Dialog overlay (Mock Software modules) */}
@@ -725,38 +884,11 @@ const App: React.FC = () => {
                              </div>
                          </motion.div>
                     ) : (
-                        /* Default Desktop: PDF Document Viewer 2 */
-                        <div className="flex-1 glass-panel p-8 border-red-950/20 bg-black/50 overflow-hidden flex flex-col">
-                             <div className="flex items-center gap-3 border-b border-white/5 pb-4 mb-6">
-                                  <FileText className="text-red-500" size={24} />
-                                  <div>
-                                      <h3 className="text-sm font-black text-white uppercase tracking-wider">管理者限定極秘データ_SEC_992.pdf</h3>
-                                      <p className="text-[9px] text-white/30 uppercase font-mono mt-1">Classification: LEVEL_05_CONFIDENTIAL</p>
-                                  </div>
-                             </div>
-
-                             <div className="flex-1 overflow-y-auto space-y-4 text-xs leading-relaxed font-mono text-white/70 pr-4">
-                                  <p className="font-bold text-white border-l-2 border-red-500 pl-2">GOV-CORE OS 管理セッション承認</p>
-                                  <p>
-                                     管理者モードへの移行が完了しました。施設内コンソールへのアクセス許可が完全に付与されました。
-                                     システム管理者以外は、以下の高度なセキュリティシステムを操作してはなりません。
-                                  </p>
-
-                                  <p className="font-bold text-white border-l-2 border-red-500 pl-2">処刑装置の強制作動解除</p>
-                                  <p>
-                                     現在動作中の緊急処刑処分シーケンスを解除するには、デスクトップ上の「処刑停止用パスワード入力」モジュールを立ち上げ、
-                                     システム暗証番号（イベント用パスワード）を入力して完全終了させてください。
-                                  </p>
-
-                                  <div className="p-4 bg-green-950/20 border border-green-900/30 rounded-xl text-green-400">
-                                       🔐 警告: メイドコントロールシステム内のエントランスゲートは現在ロックされています。プレイヤーを退出させる際は、「メイドコントロールシステム」からロックを解除してください。
-                                  </div>
-
-                                  <p className="font-bold text-white border-l-2 border-red-500 pl-2">防犯システム（カメラグリッド）</p>
-                                  <p>
-                                     施設内に配置された防犯用カメラ（防犯カメラシステム）のリアルタイム映像を確認し、生命活動が正常に行われているかを常に監視してください。
-                                  </p>
-                             </div>
+                        /* Default Desktop view when apps are closed */
+                        <div className="flex-1 glass-panel border-white/5 bg-black/20 flex flex-col justify-center items-center text-center p-8">
+                             <Cpu className="text-white/10 animate-pulse mb-4" size={64} />
+                             <h4 className="text-xs font-black uppercase text-white/30 tracking-widest">管理者コンソール</h4>
+                             <span className="text-[9px] text-white/20 uppercase font-mono mt-1">MODULES STATUS: READY</span>
                         </div>
                     )}
                 </div>
@@ -801,6 +933,20 @@ const App: React.FC = () => {
                          <div>
                               <div className="text-xs font-black uppercase tracking-widest text-white">処刑停止コード入力</div>
                               <span className="text-[8px] text-white/30 uppercase font-mono mt-1 block">EXEC_STOP_COMMAND</span>
+                         </div>
+                    </button>
+
+                    {/* PDF 2 Re-opener icon */}
+                    <button
+                      onClick={() => setAdminPdfOpen(true)}
+                      className="flex items-center gap-4 p-5 rounded-2xl border border-red-500/20 bg-black/40 text-left hover:bg-red-500/10 transition-all text-white/60"
+                    >
+                         <div className="p-4 bg-red-950/20 rounded-xl text-red-500">
+                              <FileText size={24} />
+                         </div>
+                         <div>
+                              <div className="text-xs font-black uppercase tracking-widest text-white">極秘データ_SEC_992</div>
+                              <span className="text-[8px] text-red-500/60 uppercase font-mono mt-1 block">REOPEN_PDF_DOCUMENT</span>
                          </div>
                     </button>
 
