@@ -57,7 +57,6 @@ const App: React.FC = () => {
   // Discord Bot Connection States
   const [discordToken, setDiscordToken] = useState(localStorage.getItem('discordToken') || '');
   const [discordVoiceChannel, setDiscordVoiceChannel] = useState(localStorage.getItem('discordVoiceChannel') || '');
-  const [discordMdPath, setDiscordMdPath] = useState(localStorage.getItem('discordMdPath') || '');
   const [discordStatus, setDiscordStatus] = useState<'DISCONNECTED' | 'CONNECTING' | 'CONNECTED' | 'ERROR'>('DISCONNECTED');
 
   // Local synchronized puzzle timer countdown state
@@ -76,15 +75,14 @@ const App: React.FC = () => {
     if ((window as any).electron) {
       (window as any).electron.send('UPDATE_DISCORD_CONFIG', {
         token: discordToken,
-        channelId: discordVoiceChannel,
-        mdPath: discordMdPath
+        channelId: discordVoiceChannel
       });
     }
   };
 
   useEffect(() => {
     syncDiscordConfig();
-  }, [discordToken, discordVoiceChannel, discordMdPath]);
+  }, [discordToken, discordVoiceChannel]);
 
   // Synchronized puzzle countdown timer loop
   useEffect(() => {
@@ -965,24 +963,6 @@ const App: React.FC = () => {
                                               }}
                                          />
                                     </div>
-                               </div>
-
-                               <div className="space-y-2 pt-2">
-                                    <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest block">通知用 Markdown 設定ファイルパス (.md)</label>
-                                    <input
-                                         type="text"
-                                         placeholder="C:\mados\notification.md"
-                                         className="w-full bg-black/60 border border-white/10 rounded-xl px-4 py-3.5 text-xs font-mono text-white placeholder-white/20 outline-none focus:border-blue-500/50 transition-colors"
-                                         value={discordMdPath}
-                                         onChange={(e) => {
-                                              const path = e.target.value;
-                                              setDiscordMdPath(path);
-                                              localStorage.setItem('discordMdPath', path);
-                                         }}
-                                    />
-                                    <p className="text-[8px] text-white/20 uppercase font-mono tracking-widest">
-                                         ※ 指定された .md ファイルから各トリガーメッセージ（PREPARE, START, TIMER, RETIRE 等）を自動読込します。
-                                    </p>
                                </div>
                           </div>
 

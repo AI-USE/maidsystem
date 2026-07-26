@@ -257,52 +257,46 @@ const { Client, GatewayIntentBits } = require('discord.js');
 const {
   joinVoiceChannel,
   createAudioPlayer,
-  createAudioResource,
-  AudioPlayerStatus
+  createAudioResource
 } = require('@discordjs/voice');
-const fs = require('fs');
 
 let discordClient = null;
 let voiceConnection = null;
 let audioPlayer = null;
 let discordConfig = {
   token: '',
-  channelId: '',
-  mdPath: ''
+  channelId: ''
 };
-let parsedTriggers = {};
 
-// Parse markdown configuration file to read announcement triggers
-function loadMdConfig(mdPath) {
-  if (!mdPath || !fs.existsSync(mdPath)) {
-    console.log(`Markdown config path does not exist: "${mdPath}"`);
-    return {};
-  }
-  try {
-    const content = fs.readFileSync(mdPath, 'utf8');
-    const triggers = {};
-    const lines = content.split('\n');
-    for (const line of lines) {
-      const match = line.match(/^-\s*\*\*([A-Z0-9_]+)\*\*:\s*(.*)$/);
-      if (match) {
-        triggers[match[1]] = match[2].trim();
-      }
-    }
-    console.log('Successfully loaded Markdown triggers:', Object.keys(triggers));
-    return triggers;
-  } catch (err) {
-    console.error('Failed to parse md config:', err);
-    return {};
-  }
-}
+// Built-in announcements for escape room events
+const defaultTriggers = {
+  PREPARE: '謎解き準備が完了しました。端末のスタートボタンを押してゲームを開始してください。',
+  START: 'ゲームスタート。ミッションを開始します。制限時間は7分です。',
+  TIMER_6: '残り時間、6分です。',
+  TIMER_5: '残り時間、5分です。',
+  TIMER_4: '残り時間、4分です。',
+  TIMER_3: '残り時間、3分です。',
+  TIMER_2: '残り時間、2分です。',
+  TIMER_1: '残り時間、1分です。急いで暗号を解読してください。',
+  TIMER_10S: '10',
+  TIMER_9S: '9',
+  TIMER_8S: '8',
+  TIMER_7S: '7',
+  TIMER_6S: '6',
+  TIMER_5S: '5',
+  TIMER_4S: '4',
+  TIMER_3S: '3',
+  TIMER_2S: '2',
+  TIMER_1S: '1',
+  FINISH: '制限時間終了。ゲームオーバーです。システムを強制停止します。',
+  STOP: '解説が終了しました。お疲れ様でした。',
+  RETIRE: '警告、警告。{name}がリタイアしました。',
+  CANCEL_RETIRE: 'リタイアが遠隔解除されました。ゲームを継続します。'
+};
 
 // Start, stop, or reconfigure Discord Bot connection
 function updateDiscordClient(config) {
   discordConfig = { ...discordConfig, ...config };
-
-  if (config.mdPath) {
-    parsedTriggers = loadMdConfig(config.mdPath);
-  }
 
   if (!discordConfig.token) {
     console.log('No Bot Token provided, shutting down Discord connection.');
@@ -400,7 +394,7 @@ ipcMain.on('UPDATE_DISCORD_CONFIG', (event, config) => {
 });
 
 ipcMain.on('TRIGGER_DISCORD_TTS', (event, { triggerKey, fallbackText, variables }) => {
-  let template = parsedTriggers[triggerKey] || fallbackText;
+  let template = defaultTriggers[triggerKey] || fallbackText;
   if (template) {
     if (variables) {
       for (const [key, val] of Object.entries(variables)) {
