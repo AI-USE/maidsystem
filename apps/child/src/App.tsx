@@ -44,11 +44,12 @@ const App: React.FC = () => {
 
   // Puzzle State Machine
   // 'idle': Setup / Initial phase
+  // 'preparation': Standard preparation screen with START button
   // 'locked': Fullscreen locked screen overlay, 7-minute timer, clock forced to 23:53:40
   // 'browsing_pdf_1': First PDF displayed. Standard desktop hidden. Footer has only passworded power button.
   // 'boot_loading': Loading sequence screen for GOV-CORE OS
   // 'admin_desktop': High-security Admin Desktop showing 3 big software icons + PDF Viewer 2
-  const [puzzleState, setPuzzleState] = useState<'idle' | 'locked' | 'browsing_pdf_1' | 'boot_loading' | 'admin_desktop'>('idle');
+  const [puzzleState, setPuzzleState] = useState<'idle' | 'preparation' | 'locked' | 'browsing_pdf_1' | 'boot_loading' | 'admin_desktop'>('idle');
   const [puzzleInput, setPuzzleInput] = useState('');
   const [showPuzzleInputRaw, setShowPuzzleInputRaw] = useState(false);
   const [puzzleError, setPuzzleError] = useState(false);
@@ -68,8 +69,8 @@ const App: React.FC = () => {
   // Admin Mock Application Windows Open States
   const [openAppId, setOpenAppId] = useState<string | null>(null);
 
-  // Security Camera Grid enlarger
-  const [selectedCam, setSelectedCam] = useState<number | null>(null);
+  // Security Camera Active Channel (1 or 2)
+  const [activeCamChannel, setActiveCamChannel] = useState<number>(1);
 
   // Maid controls state mock
   const [maidActive, setMaidActive] = useState(true);
@@ -139,8 +140,6 @@ const App: React.FC = () => {
       }, 3000);
 
       return () => clearTimeout(videoTimeout);
-    } else {
-      setVideoPlaying(false);
     }
   }, [puzzleState]);
 
@@ -153,6 +152,11 @@ const App: React.FC = () => {
           if (prev >= 100) {
             clearInterval(interval);
             setVideoPlaying(false);
+
+            // Transition state machine based on active state
+            if (puzzleState === 'preparation') {
+               setPuzzleState('locked');
+            }
             return 100;
           }
           return prev + 1; // 100 steps total, takes ~10 seconds at 100ms interval
@@ -160,12 +164,13 @@ const App: React.FC = () => {
       }, 100);
     }
     return () => clearInterval(interval);
-  }, [videoPlaying]);
+  }, [videoPlaying, puzzleState]);
 
   // Execution Countdown Timer
+  // Starts ticking only after preparation is complete (i.e. 'locked', 'browsing_pdf_1', or 'admin_desktop')
   useEffect(() => {
     let interval: any;
-    if (timerSeconds !== null && timerSeconds > 0) {
+    if (timerSeconds !== null && timerSeconds > 0 && puzzleState !== 'preparation' && puzzleState !== 'idle') {
       interval = setInterval(() => {
         setTimerSeconds(prev => {
           if (prev && prev > 0) return prev - 1;
@@ -174,7 +179,7 @@ const App: React.FC = () => {
       }, 1000);
     }
     return () => clearInterval(interval);
-  }, [timerSeconds]);
+  }, [timerSeconds, puzzleState]);
 
   useEffect(() => {
     if ((window as any).electron) {
@@ -289,7 +294,7 @@ const App: React.FC = () => {
         // Set execution countdown to exactly 7 minutes (420 seconds)
         setTimerSeconds(420);
 
-        setPuzzleState('locked');
+        setPuzzleState('preparation');
         setPuzzleInput('');
         setPuzzleError(false);
         setExecutionAborted(false);
@@ -306,7 +311,7 @@ const App: React.FC = () => {
         setTimeOverride(targetTime);
         setTimerSeconds(420);
 
-        setPuzzleState('locked');
+        setPuzzleState('preparation');
         setPuzzleInput('');
         setPuzzleError(false);
         setExecutionAborted(false);
@@ -370,14 +375,51 @@ const App: React.FC = () => {
       }} />;
   }
 
-  // Determine current active displayed clock
+  // Determine current active displayed clock & Date
   const displayClockStr = (timeOverride || time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  const displayDateStr = (timeOverride || time).toLocaleDateString('ja-JP', { year: 'numeric', month: '2-digit', day: '2-digit', weekday: 'short' });
 
   return (
     <OSContext.Provider value={osContextValue}>
     <div className={`relative h-screen w-screen bg-[#050508] text-[#eaeaea] overflow-hidden ${isShaking ? 'animate-shake' : ''} ${isFrozen ? 'pointer-events-none select-none' : ''}`}>
 
       <AnimatePresence>
+          {/* Phase 0: Preparation Screen with START button */}
+          {puzzleState === 'preparation' && (
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="fixed inset-0 z-[500] bg-[#050508] flex flex-col items-center justify-center p-6 text-center"
+              >
+                  <div className="scanlines z-0" />
+                  <motion.div
+                    initial={{ scale: 0.95, y: 15 }}
+                    animate={{ scale: 1, y: 0 }}
+                    className="w-full max-w-md glass-panel p-10 rounded-[32px] border-red-900/30 bg-black/40 relative z-10 flex flex-col items-center shadow-[0_32px_64px_-12px_rgba(0,0,0,0.9)]"
+                  >
+                      <div className="w-16 h-16 bg-red-950/40 rounded-[24px] flex items-center justify-center mb-8 border border-red-500/30 animate-pulse">
+                          <Cpu className="text-red-500" size={32} />
+                      </div>
+
+                      <h2 className="text-xl font-black tracking-[0.3em] text-white uppercase mb-2">GOV-CORE OS</h2>
+                      <p className="text-[10px] text-red-500/80 uppercase tracking-[0.1em] font-bold mb-10 max-w-xs leading-relaxed">
+                          準備完了。ミッションを開始するにはSTARTボタンを押してください。
+                      </p>
+
+                      <button
+                          onClick={() => {
+                              setVideoPlaying(true);
+                              setVideoProgress(0);
+                          }}
+                          className="w-full py-5 rounded-2xl bg-red-900 hover:bg-red-800 text-white font-black text-sm uppercase tracking-[0.3em] transition-all flex items-center justify-center gap-2 shadow-[0_0_30px_rgba(239,68,68,0.3)] hover:scale-[1.02]"
+                      >
+                          START
+                      </button>
+                  </motion.div>
+              </motion.div>
+          )}
+
           {/* Phase 1: Custom restricted passcode screen */}
           {puzzleState === 'locked' && (
               <motion.div
@@ -625,7 +667,7 @@ const App: React.FC = () => {
           <div className="flex items-center gap-2 opacity-80">
             <Clock size={16} />
             <span className="text-sm font-light tabular-nums">
-              {displayClockStr}
+              {displayDateStr} {displayClockStr}
             </span>
           </div>
         </div>
@@ -637,43 +679,13 @@ const App: React.FC = () => {
         {/* State A: browsing_pdf_1 (Only First Scrollable PDF File) */}
         {puzzleState === 'browsing_pdf_1' && (
             <div className="w-full h-full flex gap-8">
-                {/* PDF Left panel */}
-                <div className="flex-1 glass-panel p-8 border-red-950/20 bg-black/50 overflow-hidden flex flex-col">
-                     <div className="flex items-center gap-3 border-b border-white/5 pb-4 mb-6">
-                          <FileText className="text-red-500" size={24} />
-                          <div>
-                              <h3 className="text-sm font-black text-white uppercase tracking-wider">処刑装置起動手順_LOG_832.pdf</h3>
-                              <p className="text-[9px] text-white/30 uppercase font-mono mt-1">Classification: HIGHLY_CONFIDENTIAL</p>
-                          </div>
-                     </div>
-
-                     <div className="flex-1 overflow-y-auto space-y-4 text-xs leading-relaxed font-mono text-white/70 pr-4">
-                          <div className="p-4 bg-red-950/20 border border-red-900/30 rounded-xl text-red-400 mb-6">
-                               🚨 [WARN] 処刑シーケンスが自動起動されました。停止を完了するには、管理者特権(GOV-CORE ADMIN)をバイパスし、処刑停止システムにアクセスする必要があります。
-                          </div>
-
-                          <p className="font-bold text-white border-l-2 border-red-500 pl-2">1. ロック解除の概要</p>
-                          <p>
-                             本機は緊急用として、「第一フェーズ」および「管理者フェーズ」の二層セキリティロックを搭載している。
-                             第一フェーズを解除すると本緊急ファイルを閲覧可能となる。しかし、実際の処分停止およびデバイス統合を制御するには、**管理者モード(GOV-CORE OS)**への完全復帰が必要である。
-                          </p>
-
-                          <p className="font-bold text-white border-l-2 border-red-500 pl-2">2. 管理者モードへの移行手順</p>
-                          <p>
-                             本画面下部の「電源 / システム終了」アイコンをクリックすると、GOV-CORE OSのカーネル接続プロンプトが表示される。
-                             移行を安全に進めるには、インストール時にシステムに登録した**「イベント用パスワード」**を入力して実行せよ。
-                          </p>
-
-                          <p className="font-bold text-white border-l-2 border-red-500 pl-2">3. 注意事項</p>
-                          <p>
-                             タイマーがゼロになる前に処刑停止プログラムが作動しなかった場合、施設隔壁が完全封鎖され、致死処分が自動実行される。
-                             時間を浪費してはならない。管理者特権への認証コードを入力し、管理者専用の停止ツール(処刑停止用パスワード入力)を立ち上げるのだ。
-                          </p>
-
-                          <div className="border-t border-white/5 pt-4 text-[9px] text-white/20">
-                               GOVERNMENT CENTRAL OVERRIDE - ALL RIGHTS RESERVED
-                          </div>
-                     </div>
+                {/* Real embedded PDF 1 viewport */}
+                <div className="flex-1 glass-panel p-2 border-red-950/20 bg-black/50 overflow-hidden flex flex-col relative">
+                     <iframe
+                       src="/documents/doc1.pdf"
+                       className="w-full h-full border-0 rounded-2xl bg-zinc-950"
+                       title="処刑装置起動手順_LOG_832.pdf"
+                     />
                 </div>
 
                 {/* PDF Right panel info */}
@@ -699,63 +711,47 @@ const App: React.FC = () => {
                           initial={{ opacity: 0, y: 30, scale: 0.95 }}
                           animate={{ opacity: 1, y: 0, scale: 1 }}
                           exit={{ opacity: 0, y: 30, scale: 0.95 }}
-                          className="absolute inset-0 z-40 glass-panel border-red-950/40 bg-black/90 p-8 rounded-[32px] flex flex-col overflow-hidden shadow-[0_32px_64px_rgba(0,0,0,0.9)]"
+                          className="absolute inset-0 z-40 glass-panel border-red-950/40 bg-black/95 p-2 rounded-[32px] flex flex-col overflow-hidden shadow-[0_32px_64px_rgba(0,0,0,0.9)]"
                         >
-                            <div className="flex items-center justify-between border-b border-white/5 pb-4 mb-6">
+                            <div className="flex items-center justify-between border-b border-white/5 pb-2 px-4 mb-2">
                                  <div className="flex items-center gap-3">
-                                      <FileText className="text-red-500 animate-pulse" size={24} />
+                                      <FileText className="text-red-500 animate-pulse" size={20} />
                                       <div>
-                                          <h3 className="text-sm font-black text-white uppercase tracking-wider">管理者限定極秘データ_SEC_992.pdf</h3>
-                                          <p className="text-[9px] text-white/30 uppercase font-mono mt-1">Classification: LEVEL_05_CONFIDENTIAL</p>
+                                          <h3 className="text-xs font-black text-white uppercase tracking-wider">管理者限定極秘データ_SEC_992.pdf</h3>
                                       </div>
                                  </div>
                                  <button
                                    onClick={() => setAdminPdfOpen(false)}
-                                   className="p-2 hover:bg-white/10 rounded-full transition-colors text-white/40 hover:text-white"
+                                   className="p-1 hover:bg-white/10 rounded-full transition-colors text-white/40 hover:text-white"
                                  >
-                                      <X size={18} />
+                                      <X size={16} />
                                  </button>
                             </div>
 
-                            <div className="flex-1 overflow-y-auto space-y-4 text-xs leading-relaxed font-mono text-white/70 pr-4">
-                                  <p className="font-bold text-white border-l-2 border-red-500 pl-2">GOV-CORE OS 管理セッション承認</p>
-                                  <p>
-                                     管理者モードへの移行が完了しました。施設内コンソールへのアクセス許可が完全に付与されました。
-                                     システム管理者以外は、以下の高度なセキュリティシステムを操作してはなりません。
-                                  </p>
-
-                                  <p className="font-bold text-white border-l-2 border-red-500 pl-2">処刑装置の強制作動解除</p>
-                                  <p>
-                                     現在動作中の緊急処刑処分シーケンスを解除するには、デスクトップ上の「処刑停止用パスワード入力」モジュールを立ち上げ、
-                                     システム暗証番号（イベント用パスワード）を入力して完全終了させてください。
-                                  </p>
-
-                                  <div className="p-4 bg-green-950/20 border border-green-900/30 rounded-xl text-green-400">
-                                       🔐 警告: メイドコントロールシステム内のエントランスゲートは現在ロックされています。プレイヤーを退出させる際は、「メイドコントロールシステム」からロックを解除してください。
-                                  </div>
-
-                                  <p className="font-bold text-white border-l-2 border-red-500 pl-2">防犯システム（カメラグリッド）</p>
-                                  <p>
-                                     施設内に配置された防犯用カメラ（防犯カメラシステム）のリアルタイム映像を確認し、生命活動が正常に行われているかを常に監視してください。
-                                  </p>
+                            <div className="flex-1 rounded-2xl overflow-hidden bg-zinc-950">
+                                 <iframe
+                                   src="/documents/doc2.pdf"
+                                   className="w-full h-full border-0"
+                                   title="管理者限定極秘データ_SEC_992.pdf"
+                                 />
                             </div>
                         </motion.div>
                     )}
                 </AnimatePresence>
 
-                {/* Left Desktop: PDF Viewer 2 & 3 Large Custom Software Apps */}
-                <div className="flex-1 flex flex-col gap-6">
-                    {/* Active Plugin Dialog overlay (Mock Software modules) */}
-                    {openAppId ? (
+                {/* Decoupled Admin Software windows opening in gorgeous Fullscreen overlays */}
+                <AnimatePresence>
+                     {openAppId && (
                          <motion.div
-                           initial={{ opacity: 0, scale: 0.95 }}
+                           initial={{ opacity: 0, scale: 0.98 }}
                            animate={{ opacity: 1, scale: 1 }}
-                           className="flex-1 glass-panel border-red-950/40 bg-black/70 overflow-hidden flex flex-col shadow-2xl"
+                           exit={{ opacity: 0, scale: 0.98 }}
+                           className="fixed inset-0 z-[600] bg-black/95 flex flex-col p-8"
                          >
-                             <div className="h-12 flex items-center justify-between px-6 border-b border-white/5 bg-white/5">
-                                 <div className="flex items-center gap-3">
-                                      <ShieldCheck className="text-red-500" size={18} />
-                                      <span className="text-xs font-bold uppercase tracking-[0.2em] text-white">
+                             <div className="h-16 flex items-center justify-between border-b border-white/10 pb-4 mb-6">
+                                 <div className="flex items-center gap-4">
+                                      <ShieldCheck className="text-red-500" size={24} />
+                                      <span className="text-sm font-black uppercase tracking-[0.3em] text-white">
                                            {openAppId === 'camera' && '防犯カメラシステム (SECURITY_CAM_MONITOR)'}
                                            {openAppId === 'maid' && 'メイドコントロールシステム (MAID_CONTROLLER)'}
                                            {openAppId === 'stop_execution' && '処刑停止システム (EXECUTION_OVERRIDE)'}
@@ -763,71 +759,96 @@ const App: React.FC = () => {
                                  </div>
                                  <button
                                    onClick={() => setOpenAppId(null)}
-                                   className="p-1 hover:bg-white/10 rounded-full transition-colors text-white/40 hover:text-white"
+                                   className="p-3 bg-white/5 hover:bg-white/15 rounded-full transition-all text-white/60 hover:text-white"
                                  >
-                                      <X size={16} />
+                                      <X size={24} />
                                  </button>
                              </div>
 
-                             <div className="flex-1 p-6 overflow-y-auto relative">
-                                  {/* Mock Camera System App */}
+                             <div className="flex-1 overflow-y-auto relative p-4">
+                                  {/* Fullscreen Video Camera Module (Looping mp4 files with Toggle controls) */}
                                   {openAppId === 'camera' && (
-                                      <div className="h-full flex flex-col gap-4">
-                                          <div className="grid grid-cols-2 gap-4 flex-1">
-                                               {[1, 2, 3, 4].map(idx => (
-                                                   <div
-                                                     key={idx}
-                                                     onClick={() => setSelectedCam(idx)}
-                                                     className="relative bg-black rounded-xl border border-white/5 overflow-hidden group cursor-pointer hover:border-red-500/40 transition-all aspect-video flex items-center justify-center"
-                                                   >
-                                                       <div className="scanlines z-0" />
-                                                       <div className="absolute top-2 left-2 px-2 py-0.5 bg-black/60 rounded font-mono text-[9px] text-white/60">
-                                                            CAM_0{idx}: {idx===1?'エントランス':idx===2?'制御室':idx===3?'メイドルーム':'廊下'}
-                                                       </div>
-                                                       {/* Moving noise animation mock */}
-                                                       <div className="absolute inset-0 bg-white/[0.03] flex items-center justify-center font-mono text-[10px] text-white/30 uppercase tracking-[0.2em]">
-                                                            [カメラ映像受信中 - LIVE]
-                                                       </div>
-                                                   </div>
-                                               ))}
+                                      <div className="h-full flex flex-col gap-6">
+                                          {/* Camera Channel Tabs */}
+                                          <div className="flex gap-4">
+                                               <button
+                                                 onClick={() => setActiveCamChannel(1)}
+                                                 className={`px-6 py-3 rounded-xl border text-xs font-bold uppercase tracking-widest transition-all ${activeCamChannel === 1 ? 'bg-red-500/10 border-red-500 text-white' : 'bg-white/5 border-white/10 text-white/40 hover:bg-white/10'}`}
+                                               >
+                                                    CAM_01: エントランス
+                                               </button>
+                                               <button
+                                                 onClick={() => setActiveCamChannel(2)}
+                                                 className={`px-6 py-3 rounded-xl border text-xs font-bold uppercase tracking-widest transition-all ${activeCamChannel === 2 ? 'bg-red-500/10 border-red-500 text-white' : 'bg-white/5 border-white/10 text-white/40 hover:bg-white/10'}`}
+                                               >
+                                                    CAM_02: 制御室
+                                               </button>
+                                          </div>
+
+                                          <div className="flex-1 bg-black rounded-3xl border border-white/10 overflow-hidden relative aspect-video max-w-4xl mx-auto w-full flex items-center justify-center">
+                                               <div className="scanlines z-0" />
+                                               {activeCamChannel === 1 ? (
+                                                    <video
+                                                      key="cam1"
+                                                      src="/videos/cam1.mp4"
+                                                      autoPlay
+                                                      loop
+                                                      muted
+                                                      playsInline
+                                                      className="w-full h-full object-cover"
+                                                    />
+                                               ) : (
+                                                    <video
+                                                      key="cam2"
+                                                      src="/videos/cam2.mp4"
+                                                      autoPlay
+                                                      loop
+                                                      muted
+                                                      playsInline
+                                                      className="w-full h-full object-cover"
+                                                    />
+                                               )}
+                                               <div className="absolute top-4 left-4 px-3 py-1 bg-black/80 rounded-md font-mono text-xs text-white/80">
+                                                    CAM_0{activeCamChannel} - LIVE BROADCAST
+                                               </div>
                                           </div>
                                       </div>
                                   )}
 
                                   {/* Mock Maid Control System App */}
                                   {openAppId === 'maid' && (
-                                      <div className="space-y-6 font-mono text-xs">
+                                      <div className="max-w-4xl mx-auto space-y-8 py-6 font-mono">
                                            <div className="grid grid-cols-3 gap-6">
-                                                <div className="glass-panel p-5 border-white/5 bg-white/5">
-                                                     <div className="text-[10px] text-white/40 uppercase mb-1">メイド稼働状況</div>
-                                                     <div className={`text-xl font-black ${maidActive ? 'text-green-400' : 'text-red-500'}`}>
+                                                <div className="glass-panel p-6 border-white/10 bg-white/5 rounded-2xl">
+                                                     <div className="text-xs text-white/40 uppercase mb-2">メイド稼働状況</div>
+                                                     <div className={`text-2xl font-black ${maidActive ? 'text-green-400' : 'text-red-500'}`}>
                                                           {maidActive ? '通常運転 (ACTIVE)' : '緊急停止中'}
                                                      </div>
                                                      <button
                                                        onClick={() => setMaidActive(!maidActive)}
-                                                       className="mt-4 px-4 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-[9px] font-bold uppercase tracking-wider"
+                                                       className="mt-6 w-full py-2.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-bold uppercase tracking-wider transition-colors"
                                                      >
                                                           トグル切り替え
                                                      </button>
                                                 </div>
 
-                                                <div className="glass-panel p-5 border-white/5 bg-white/5">
-                                                     <div className="text-[10px] text-white/40 uppercase mb-1">隔壁エリア温度</div>
-                                                     <div className="text-xl font-black text-white">{tempVal.toFixed(1)}°C</div>
-                                                     <div className="flex gap-2 mt-4">
-                                                          <button onClick={() => setTempVal(prev => prev - 0.5)} className="px-3 py-1 bg-white/5 border border-white/10 rounded-md text-[10px] hover:bg-white/10">-</button>
-                                                          <button onClick={() => setTempVal(prev => prev + 0.5)} className="px-3 py-1 bg-white/5 border border-white/10 rounded-md text-[10px] hover:bg-white/10">+</button>
+                                                <div className="glass-panel p-6 border-white/10 bg-white/5 rounded-2xl">
+                                                     <div className="text-xs text-white/40 uppercase mb-2">隔壁エリア温度</div>
+                                                     <div className="text-2xl font-black text-white">{tempVal.toFixed(1)}°C</div>
+                                                     <div className="flex gap-4 mt-6">
+                                                          <button onClick={() => setTempVal(prev => prev - 0.5)} className="flex-1 py-2.5 bg-white/5 border border-white/10 rounded-xl text-sm hover:bg-white/10 transition-colors">-</button>
+                                                          <button onClick={() => setTempVal(prev => prev + 0.5)} className="flex-1 py-2.5 bg-white/5 border border-white/10 rounded-xl text-sm hover:bg-white/10 transition-colors">+</button>
                                                      </div>
                                                 </div>
 
-                                                <div className="glass-panel p-5 border-white/5 bg-white/5">
-                                                     <div className="text-[10px] text-white/40 uppercase mb-1">エントランスゲート</div>
-                                                     <div className={`text-xl font-black ${entranceLocked ? 'text-red-500' : 'text-green-400'}`}>
+                                                <div className="glass-panel p-6 border-white/10 bg-white/5 rounded-2xl">
+                                                     <div className="text-xs text-white/40 uppercase mb-2">エントランスゲート</div>
+                                                     <div className={`text-2xl font-black ${entranceLocked ? 'text-red-500' : 'text-green-400'}`}>
                                                           {entranceLocked ? 'ロック中 (LOCKED)' : '開放 (UNLOCKED)'}
                                                      </div>
                                                      <button
                                                        onClick={() => setEntranceLocked(!entranceLocked)}
-                                                       className="mt-4 px-4 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-[9px] font-bold uppercase tracking-wider"
+                                                       className="mt-6 w-full py-2.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-bold uppercase tracking-wider transition-colors"
                                                      >
                                                           ロック切替
                                                      </button>
@@ -883,14 +904,16 @@ const App: React.FC = () => {
                                   )}
                              </div>
                          </motion.div>
-                    ) : (
-                        /* Default Desktop view when apps are closed */
-                        <div className="flex-1 glass-panel border-white/5 bg-black/20 flex flex-col justify-center items-center text-center p-8">
-                             <Cpu className="text-white/10 animate-pulse mb-4" size={64} />
-                             <h4 className="text-xs font-black uppercase text-white/30 tracking-widest">管理者コンソール</h4>
-                             <span className="text-[9px] text-white/20 uppercase font-mono mt-1">MODULES STATUS: READY</span>
-                        </div>
-                    )}
+                     )}
+                </AnimatePresence>
+
+                {/* Left Desktop: Default background workspace */}
+                <div className="flex-1 flex flex-col gap-6">
+                    <div className="flex-1 glass-panel border-white/5 bg-black/20 flex flex-col justify-center items-center text-center p-8">
+                         <Cpu className="text-white/10 animate-pulse mb-4" size={64} />
+                         <h4 className="text-xs font-black uppercase text-white/30 tracking-widest">管理者コンソール</h4>
+                         <span className="text-[9px] text-white/20 uppercase font-mono mt-1">MODULES STATUS: READY</span>
+                    </div>
                 </div>
 
                 {/* Right Desktop: 3 Large Prominent Mock App Icon Buttons */}
@@ -1058,30 +1081,6 @@ const App: React.FC = () => {
             </motion.div>
           </motion.div>
         )}
-      </AnimatePresence>
-
-      {/* Security Camera enlarger modal */}
-      <AnimatePresence>
-         {selectedCam !== null && (
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                onClick={() => setSelectedCam(null)}
-                className="fixed inset-0 z-[700] bg-black/95 flex flex-col items-center justify-center p-6 cursor-zoom-out"
-              >
-                   <div className="scanlines z-0" />
-                   <div className="relative max-w-4xl w-full border border-red-500/20 rounded-2xl overflow-hidden aspect-video">
-                        <div className="absolute top-4 left-4 px-3 py-1 bg-black/70 rounded-md font-mono text-xs text-white/80">
-                             CAM_0{selectedCam}: {selectedCam===1?'エントランス':selectedCam===2?'制御室':selectedCam===3?'メイドルーム':'廊下'} - LIVE MONITORING
-                        </div>
-                        <div className="absolute inset-0 bg-white/[0.02] flex items-center justify-center font-mono text-sm text-white/40 uppercase tracking-[0.2em]">
-                             [カメラ映像拡大中 - 高精細受信]
-                        </div>
-                   </div>
-                   <span className="text-[10px] text-white/30 uppercase mt-4 tracking-widest">画面クリックで戻る</span>
-              </motion.div>
-         )}
       </AnimatePresence>
 
       {/* Hacking / Freeze Overlay */}
