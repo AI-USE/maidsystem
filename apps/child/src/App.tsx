@@ -598,6 +598,7 @@ const App: React.FC = () => {
                           onClick={() => {
                               setVideoPlaying(true);
                               setVideoProgress(0);
+                              emit('CONNECTION_MSG', { text: 'GAME_START_TRIGGERED: Game Start video signal.' });
                           }}
                           className="w-full py-5 rounded-2xl bg-red-900 hover:bg-red-800 text-white font-black text-sm uppercase tracking-[0.3em] transition-all flex items-center justify-center gap-2 shadow-[0_0_30px_rgba(239,68,68,0.3)] hover:scale-[1.02]"
                       >

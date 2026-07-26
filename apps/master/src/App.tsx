@@ -48,7 +48,57 @@ const App: React.FC = () => {
   const [localPort, setLocalPort] = useState(3030);
   const [isSecurityMode, setIsSecurityMode] = useState(false);
   const [pendingApprovals, setPendingApprovals] = useState<any[]>([]);
-  const [activeTab, setActiveTab] = useState<'fleet' | 'performance'>('fleet');
+  const [activeTab, setActiveTab] = useState<'fleet' | 'performance' | 'settings'>('fleet');
+
+  // Discord & TTS States
+  const [discordWebhook, setDiscordWebhook] = useState(localStorage.getItem('discordWebhook') || '');
+  const [ttsEnabled, setTtsEnabled] = useState(localStorage.getItem('ttsEnabled') !== 'false');
+
+  // Local synchronized puzzle timer countdown state
+  const [puzzleTimer, setPuzzleTimer] = useState<number | null>(null);
+
+  // References to handle timers and callbacks with fresh state
+  const connectedDevicesRef = React.useRef<DeviceInfo[]>([]);
+  const retireIntervalRef = React.useRef<any>(null);
+
+  useEffect(() => {
+    connectedDevicesRef.current = connectedDevices;
+  }, [connectedDevices]);
+
+  // Synchronized puzzle countdown timer loop
+  useEffect(() => {
+    let interval: any;
+    if (puzzleTimer !== null && puzzleTimer > 0) {
+      interval = setInterval(() => {
+        setPuzzleTimer(prev => {
+          if (prev === null || prev <= 0) return null;
+          const next = prev - 1;
+
+          // Announce remaining minutes
+          if (next > 0 && next % 60 === 0) {
+            const mins = next / 60;
+            const text = `残り${mins}分です。`;
+            speakAnnouncement(text);
+            sendDiscordNotification(`【システムタイマー】⏳ ${text}`);
+          }
+          // Announce last 10 seconds
+          else if (next <= 10 && next > 0) {
+            speakAnnouncement(String(next));
+          }
+          // Announce termination
+          else if (next === 0) {
+            const text = "終了。ゲームシステムが停止されました。";
+            speakAnnouncement(text);
+            sendDiscordNotification(`【システムタイマー】🛑 ${text}`);
+            return null;
+          }
+
+          return next;
+        });
+      }, 1000);
+    }
+    return () => clearInterval(interval);
+  }, [puzzleTimer]);
 
   useEffect(() => {
     if ((window as any).electron) {
@@ -72,6 +122,21 @@ const App: React.FC = () => {
           ...prev,
           [deviceId]: [...(prev[deviceId] || []), text]
         }));
+
+        if (text.includes('GAME_START_TRIGGERED')) {
+           speakAnnouncement("ゲームスタート。ミッションを開始します。");
+           sendDiscordNotification("【システム通知】🚀 ゲームスタート！ミッションが開始されました。制限時間7分。");
+           setPuzzleTimer(420); // Starts the Master local 7-minute countdown
+        } else if (text.includes('EMERGENCY_RETIRE_TRIGGERED')) {
+           const devName = getDeviceName(deviceId);
+           speakAnnouncement(`${devName}がリタイアしました。`);
+           sendDiscordNotification(`🚨【緊急警告】${devName}が緊急リタイアしました！`);
+
+           if (retireIntervalRef.current) clearInterval(retireIntervalRef.current);
+           retireIntervalRef.current = setInterval(() => {
+               speakAnnouncement(`${devName}リタイア`);
+           }, 5000);
+        }
       });
 
       (window as any).electron.on('PENDING_APPROVALS_UPDATED', (list: any[]) => {
@@ -157,6 +222,75 @@ const App: React.FC = () => {
     }
   };
 
+  // Helper to resolve device name by ID
+  const getDeviceName = (id: string) => {
+    const dev = connectedDevicesRef.current.find(d => d.id === id);
+    return dev?.name || `端末 ${id.substring(0, 6)}`;
+  };
+
+  // Discord integration helper
+  const sendDiscordNotification = async (message: string) => {
+    const webhookUrl = localStorage.getItem('discordWebhook') || discordWebhook;
+    if (!webhookUrl) return;
+
+    try {
+      await fetch(webhookUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ content: message })
+      });
+    } catch (err) {
+      console.error('Failed to send Discord webhook:', err);
+    }
+  };
+
+  // TTS Speech Synthesis announcement helper
+  const speakAnnouncement = (text: string) => {
+    const ttsVal = localStorage.getItem('ttsEnabled') !== 'false';
+    if (!ttsVal) return;
+
+    if ('speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.lang = 'ja-JP';
+      utterance.rate = 1.0;
+      window.speechSynthesis.speak(utterance);
+    }
+  };
+
+  const handlePuzzleStart = () => {
+    sendCommand('PUZZLE_START');
+    setPuzzleTimer(null);
+    speakAnnouncement("謎解き準備が完了しました。ゲームを開始してください。");
+    sendDiscordNotification("【システム通知】謎解き準備が完了しました。端末でスタートボタンを押してください。");
+  };
+
+  const handlePuzzleStop = () => {
+    sendCommand('PUZZLE_STOP');
+    setPuzzleTimer(null);
+    if (retireIntervalRef.current) {
+        clearInterval(retireIntervalRef.current);
+        retireIntervalRef.current = null;
+    }
+    window.speechSynthesis.cancel();
+    speakAnnouncement("解説が終了しました。");
+    sendDiscordNotification("【システム通知】解説が終了しました。お疲れ様でした。");
+  };
+
+  const handlePuzzleRestart = () => {
+    sendCommand('PUZZLE_RESTART');
+    setPuzzleTimer(null);
+    if (retireIntervalRef.current) {
+        clearInterval(retireIntervalRef.current);
+        retireIntervalRef.current = null;
+    }
+    window.speechSynthesis.cancel();
+    speakAnnouncement("謎解きシステムが再起動されました。準備完了です。");
+    sendDiscordNotification("【システム通知】謎解きシステムが再起動されました。準備完了です。");
+  };
+
   // Scan for any connected device logs indicating emergency retirement
   const retiredDevice = connectedDevices.find(device => {
       const logs = connectionLogs[device.id] || [];
@@ -188,7 +322,7 @@ const App: React.FC = () => {
                       </div>
                   </div>
                   <button
-                    onClick={() => sendCommand('PUZZLE_CANCEL_RETIRE')}
+                    onClick={handleCancelRetire}
                     className="px-6 py-2.5 bg-red-500 hover:bg-red-600 text-white font-black text-xs uppercase tracking-widest rounded-xl transition-all shadow-[0_0_20px_rgba(239,68,68,0.4)]"
                   >
                        遠隔ロック解除を実行
@@ -373,6 +507,13 @@ const App: React.FC = () => {
                 >
                     <Zap size={18} />
                     <span className="text-[10px] uppercase tracking-widest">公演パネル</span>
+                </button>
+                <button
+                    onClick={() => setActiveTab('settings')}
+                    className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${activeTab === 'settings' ? 'bg-white text-black font-bold' : 'text-white/40 hover:bg-white/5'}`}
+                >
+                    <Sliders size={18} />
+                    <span className="text-[10px] uppercase tracking-widest">設定パネル</span>
                 </button>
             </div>
 
@@ -582,7 +723,7 @@ const App: React.FC = () => {
                     </div>
                 </div>
                 </>
-            ) : (
+            ) : activeTab === 'performance' ? (
                 <div className="flex-1 flex flex-col gap-8 p-10 bg-white/5 border border-white/10 rounded-[48px] justify-center items-center relative overflow-hidden">
                      <div className="absolute inset-0 pointer-events-none z-0 opacity-5 bg-[linear-gradient(rgba(18,16,16,0)_50%,rgba(0,0,0,0.25)_50%),linear-gradient(90deg,rgba(255,0,0,0.06),rgba(0,255,0,0.02),rgba(0,0,255,0.06))] bg-[length:100%_4px,4px_100%]" />
                      <div className="flex flex-col items-center justify-center text-center max-w-lg z-10 gap-6">
@@ -598,7 +739,7 @@ const App: React.FC = () => {
 
                          <div className="grid grid-cols-1 md:grid-cols-4 gap-6 w-full">
                              <button
-                                 onClick={() => sendCommand('PUZZLE_START')}
+                                 onClick={handlePuzzleStart}
                                  className="flex flex-col items-center gap-4 p-6 bg-green-500/10 hover:bg-green-500/20 border border-green-500/30 hover:border-green-500/50 rounded-3xl transition-all group"
                              >
                                  <div className="p-4 bg-green-500/20 text-green-400 rounded-2xl group-hover:scale-110 transition-transform">
@@ -611,7 +752,7 @@ const App: React.FC = () => {
                              </button>
 
                              <button
-                                 onClick={() => sendCommand('PUZZLE_STOP')}
+                                 onClick={handlePuzzleStop}
                                  className="flex flex-col items-center gap-4 p-6 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 hover:border-red-500/50 rounded-3xl transition-all group"
                              >
                                  <div className="p-4 bg-red-500/20 text-red-400 rounded-2xl group-hover:scale-110 transition-transform">
@@ -624,7 +765,7 @@ const App: React.FC = () => {
                              </button>
 
                              <button
-                                 onClick={() => sendCommand('PUZZLE_RESTART')}
+                                 onClick={handlePuzzleRestart}
                                  className="flex flex-col items-center gap-4 p-6 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/30 hover:border-blue-500/50 rounded-3xl transition-all group"
                              >
                                  <div className="p-4 bg-blue-500/20 text-blue-400 rounded-2xl group-hover:scale-110 transition-transform">
@@ -650,7 +791,7 @@ const App: React.FC = () => {
                              </button>
 
                              <button
-                                 onClick={() => sendCommand('PUZZLE_CANCEL_RETIRE')}
+                                 onClick={handleCancelRetire}
                                  className="flex flex-col items-center gap-4 p-6 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 hover:border-red-500/50 rounded-3xl transition-all group col-span-1 md:col-span-4"
                              >
                                  <div className="p-4 bg-red-500/20 text-red-400 rounded-2xl group-hover:scale-110 transition-transform animate-pulse">
@@ -662,6 +803,86 @@ const App: React.FC = () => {
                                  </div>
                              </button>
                          </div>
+                     </div>
+                </div>
+            ) : (
+                <div className="flex-1 flex flex-col gap-8 p-10 bg-white/5 border border-white/10 rounded-[48px] overflow-y-auto relative">
+                     <div className="absolute inset-0 pointer-events-none z-0 opacity-5 bg-[linear-gradient(rgba(18,16,16,0)_50%,rgba(0,0,0,0.25)_50%),linear-gradient(90deg,rgba(255,0,0,0.06),rgba(0,255,0,0.02),rgba(0,0,255,0.06))] bg-[length:100%_4px,4px_100%]" />
+                     <div className="max-w-2xl w-full mx-auto space-y-8 relative z-10 py-6 font-sans">
+                          <div>
+                               <h2 className="text-3xl font-black text-white uppercase tracking-[0.4rem]">システム連携 & 設定</h2>
+                               <p className="text-xs text-white/40 uppercase tracking-[0.2rem] mt-2">Discord 連携と音声合成 (TTS) エンジンの構成</p>
+                          </div>
+
+                          <div className="h-[1px] bg-white/10" />
+
+                          {/* Discord Webhook section */}
+                          <div className="glass-panel p-8 bg-black/40 border-white/5 rounded-3xl space-y-6">
+                               <div className="flex items-center gap-4 text-white">
+                                    <MessageSquare size={24} className="text-blue-400" />
+                                    <div>
+                                         <h3 className="text-sm font-bold uppercase tracking-wider">Discord Webhook 連携設定</h3>
+                                         <p className="text-[10px] text-white/40 mt-0.5">謎解きのイベントログや緊急リタイア警告を Discord チャンネルへリアルタイム中継します。</p>
+                                    </div>
+                               </div>
+
+                               <div className="space-y-2">
+                                    <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest block">Webhook URL</label>
+                                    <input
+                                         type="text"
+                                         placeholder="https://discord.com/api/webhooks/..."
+                                         className="w-full bg-black/60 border border-white/10 rounded-xl px-4 py-3.5 text-xs font-mono text-white placeholder-white/20 outline-none focus:border-blue-500/50 transition-colors"
+                                         value={discordWebhook}
+                                         onChange={(e) => {
+                                              const url = e.target.value;
+                                              setDiscordWebhook(url);
+                                              localStorage.setItem('discordWebhook', url);
+                                         }}
+                                    />
+                               </div>
+                          </div>
+
+                          {/* Speech Synthesis (TTS) section */}
+                          <div className="glass-panel p-8 bg-black/40 border-white/5 rounded-3xl space-y-6">
+                               <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-4 text-white">
+                                         <Zap size={24} className="text-yellow-400" />
+                                         <div>
+                                              <h3 className="text-sm font-bold uppercase tracking-wider">リアルタイム音声合成 (TTS)</h3>
+                                              <p className="text-[10px] text-white/40 mt-0.5">アナウンス、警告、カウントダウンを親機にて合成音声で読み上げます。</p>
+                                         </div>
+                                    </div>
+                                    <button
+                                         onClick={() => {
+                                              const val = !ttsEnabled;
+                                              setTtsEnabled(val);
+                                              localStorage.setItem('ttsEnabled', String(val));
+                                         }}
+                                         className={`px-5 py-2.5 rounded-xl border text-[10px] font-bold uppercase tracking-widest transition-all ${ttsEnabled ? 'bg-yellow-500/10 border-yellow-500 text-yellow-400' : 'bg-white/5 border-white/10 text-white/40 hover:bg-white/10'}`}
+                                    >
+                                         {ttsEnabled ? '有効化中 (ACTIVE)' : '無効'}
+                                    </button>
+                               </div>
+                          </div>
+
+                          {/* Test Operations section */}
+                          <div className="glass-panel p-8 bg-black/40 border-white/5 rounded-3xl space-y-6">
+                               <div className="text-xs font-bold uppercase tracking-widest text-white/40">動作テストエリア</div>
+                               <div className="grid grid-cols-2 gap-4">
+                                    <button
+                                         onClick={() => sendDiscordNotification("【テスト送信】親機からのDiscord接続テストは正常です。")}
+                                         className="py-4 bg-white/5 hover:bg-white/10 border border-white/10 rounded-2xl text-[10px] font-bold uppercase tracking-widest transition-all"
+                                    >
+                                         Webhook テスト送信
+                                    </button>
+                                    <button
+                                         onClick={() => speakAnnouncement("音声合成テスト。親機スピーカー接続良好です。")}
+                                         className="py-4 bg-white/5 hover:bg-white/10 border border-white/10 rounded-2xl text-[10px] font-bold uppercase tracking-widest transition-all"
+                                    >
+                                         音声合成テスト再生
+                                    </button>
+                               </div>
+                          </div>
                      </div>
                 </div>
             )}
