@@ -6,18 +6,49 @@ export const useRemoteControl = (masterUrl: string | null) => {
   const [socket, setSocket] = useState<Socket | null>(null);
   const [lastCommand, setLastCommand] = useState<RemoteCommand | null>(null);
   const [isConnected, setIsConnected] = useState(false);
+  const [isPaired, setIsPaired] = useState(localStorage.getItem('isPaired') === 'true');
+
+  const getDeviceId = () => {
+      let id = localStorage.getItem('persistentDeviceId');
+      if (!id) {
+          id = 'MADOS_' + Math.random().toString(36).substring(2, 11).toUpperCase();
+          localStorage.setItem('persistentDeviceId', id);
+      }
+      return id;
+  };
 
   useEffect(() => {
-    if (!masterUrl) return;
+    if (!masterUrl) {
+        setIsConnected(false);
+        return;
+    };
 
     const newSocket = io(masterUrl, {
       reconnectionAttempts: Infinity,
-      reconnectionDelay: 1000,
+      reconnectionDelay: 2000,
+      reconnectionDelayMax: 5000,
+      randomizationFactor: 0.5
     });
 
     newSocket.on('connect', () => {
       setIsConnected(true);
       console.log('Connected to Master OS');
+
+      const deviceName = localStorage.getItem('deviceName') || `DEVICE_${newSocket.id.substring(0, 4)}`;
+      newSocket.emit('REQUEST_PAIRING', {
+          id: getDeviceId(),
+          name: deviceName
+      });
+    });
+
+    newSocket.on('PAIRING_RESULT', (data: { success: boolean }) => {
+        if (data.success) {
+            setIsPaired(true);
+            localStorage.setItem('isPaired', 'true');
+        } else {
+            setIsPaired(false);
+            localStorage.removeItem('isPaired');
+        }
     });
 
     newSocket.on('disconnect', () => {
@@ -29,12 +60,25 @@ export const useRemoteControl = (masterUrl: string | null) => {
       setLastCommand(command);
     });
 
+    const heartbeatInterval = setInterval(() => {
+        if (newSocket.connected) {
+            newSocket.emit('HEARTBEAT', { timestamp: Date.now() });
+        }
+    }, 5000);
+
     setSocket(newSocket);
 
     return () => {
+      clearInterval(heartbeatInterval);
       newSocket.disconnect();
     };
   }, [masterUrl]);
 
-  return { isConnected, lastCommand, socket };
+  const emit = (event: string, data: any) => {
+      if (socket && isPaired) {
+          socket.emit(event, data);
+      }
+  };
+
+  return { isConnected, isPaired, lastCommand, socket, emit };
 };

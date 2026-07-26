@@ -1,12 +1,30 @@
 {
   "name": "master",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "description": "MAD-OS Master Control",
+  "main": "main.js",
   "scripts": {
     "dev": "vite",
+    "app:dev": "concurrently \"vite\" \"wait-on http://localhost:5174 && cross-env NODE_ENV=development electron .\"",
     "build": "vite build",
+    "dist": "npm run build && electron-builder",
     "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "build": {
+    "appId": "com.mad.master",
+    "productName": "MAD-OS-MASTER",
+    "directories": {
+      "output": "../../dist/master"
+    },
+    "files": [
+      "dist/**/*",
+      "main.js",
+      "preload.js",
+      "package.json"
+    ],
+    "win": {
+      "target": "portable"
+    }
   },
   "keywords": [],
   "author": "",
