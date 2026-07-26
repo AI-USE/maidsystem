@@ -157,9 +157,45 @@ const App: React.FC = () => {
     }
   };
 
+  // Scan for any connected device logs indicating emergency retirement
+  const retiredDevice = connectedDevices.find(device => {
+      const logs = connectionLogs[device.id] || [];
+      return logs.some(log => log.includes('EMERGENCY_RETIRE_TRIGGERED'));
+  });
+
   return (
     <div className="min-h-screen bg-[#0d0d0f] text-[#f5f5f7] flex flex-col p-8 gap-8 font-sans overflow-hidden">
       <div className="aura-bg opacity-40" />
+
+      {/* Flashing global emergency notification bar if a child terminal has retired */}
+      <AnimatePresence>
+          {retiredDevice && (
+              <motion.div
+                initial={{ opacity: 0, y: -20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -20 }}
+                className="relative z-50 glass-panel p-6 border-red-500/50 bg-red-950/40 flex items-center justify-between"
+              >
+                  <div className="flex items-center gap-4">
+                      <div className="p-3 bg-red-500/20 text-red-500 rounded-xl animate-pulse">
+                          <ShieldAlert size={24} />
+                      </div>
+                      <div>
+                          <div className="text-sm font-black text-red-400 uppercase tracking-widest">⚠️ 緊急リタイア警報検知</div>
+                          <div className="text-xs text-white/60 font-mono mt-1">
+                               端末「{retiredDevice.name || retiredDevice.id}」から緊急リタイア（操作停止）が申請されました。
+                          </div>
+                      </div>
+                  </div>
+                  <button
+                    onClick={() => sendCommand('PUZZLE_CANCEL_RETIRE')}
+                    className="px-6 py-2.5 bg-red-500 hover:bg-red-600 text-white font-black text-xs uppercase tracking-widest rounded-xl transition-all shadow-[0_0_20px_rgba(239,68,68,0.4)]"
+                  >
+                       遠隔ロック解除を実行
+                  </button>
+              </motion.div>
+          )}
+      </AnimatePresence>
 
       {/* Surveillance Mode Overlay */}
       <AnimatePresence>
@@ -610,6 +646,19 @@ const App: React.FC = () => {
                                  <div className="text-center">
                                      <div className="text-xs font-black text-purple-400 uppercase tracking-widest">一斉動画再生</div>
                                      <div className="text-[9px] text-white/40 mt-1 uppercase">Broadcast_Video</div>
+                                 </div>
+                             </button>
+
+                             <button
+                                 onClick={() => sendCommand('PUZZLE_CANCEL_RETIRE')}
+                                 className="flex flex-col items-center gap-4 p-6 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 hover:border-red-500/50 rounded-3xl transition-all group col-span-1 md:col-span-4"
+                             >
+                                 <div className="p-4 bg-red-500/20 text-red-400 rounded-2xl group-hover:scale-110 transition-transform animate-pulse">
+                                     <ShieldAlert size={24} />
+                                 </div>
+                                 <div className="text-center">
+                                     <div className="text-xs font-black text-red-400 uppercase tracking-widest">リタイア遠隔解除</div>
+                                     <div className="text-[9px] text-white/40 mt-1 uppercase">Cancel_Retire</div>
                                  </div>
                              </button>
                          </div>

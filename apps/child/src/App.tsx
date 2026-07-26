@@ -29,6 +29,99 @@ import { OSContext, OSContextType } from './hooks/useOS';
 import { HiddenCamera } from './components/HiddenCamera';
 import { useRemoteControl } from './hooks/useRemoteControl';
 
+// Web Audio API Synthesizer for high-fidelity sci-fi SFX and loopable ambient BGM
+const synthContextRef: { current: AudioContext | null } = { current: null };
+const bgmOscillatorRef: { current: OscillatorNode | null } = { current: null };
+
+const playSynthSound = (type: 'tap' | 'type' | 'open' | 'success' | 'bgm') => {
+  try {
+     if (!synthContextRef.current) {
+         synthContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+     }
+     const ctx = synthContextRef.current;
+     if (ctx.state === 'suspended') {
+         ctx.resume();
+     }
+
+     if (type === 'tap') {
+         const osc = ctx.createOscillator();
+         const gain = ctx.createGain();
+         osc.type = 'sine';
+         osc.frequency.setValueAtTime(1000, ctx.currentTime);
+         osc.frequency.exponentialRampToValueAtTime(1200, ctx.currentTime + 0.05);
+         gain.gain.setValueAtTime(0.08, ctx.currentTime);
+         gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.05);
+         osc.connect(gain);
+         gain.connect(ctx.destination);
+         osc.start();
+         osc.stop(ctx.currentTime + 0.05);
+     } else if (type === 'type') {
+         const osc = ctx.createOscillator();
+         const gain = ctx.createGain();
+         osc.type = 'triangle';
+         osc.frequency.setValueAtTime(180, ctx.currentTime);
+         gain.gain.setValueAtTime(0.15, ctx.currentTime);
+         gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.03);
+         osc.connect(gain);
+         gain.connect(ctx.destination);
+         osc.start();
+         osc.stop(ctx.currentTime + 0.03);
+     } else if (type === 'open') {
+         const osc = ctx.createOscillator();
+         const gain = ctx.createGain();
+         osc.type = 'sawtooth';
+         osc.frequency.setValueAtTime(200, ctx.currentTime);
+         osc.frequency.exponentialRampToValueAtTime(800, ctx.currentTime + 0.3);
+         gain.gain.setValueAtTime(0.05, ctx.currentTime);
+         gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.3);
+         osc.connect(gain);
+         gain.connect(ctx.destination);
+         osc.start();
+         osc.stop(ctx.currentTime + 0.3);
+     } else if (type === 'success') {
+         // Dual chime harmony
+         [523.25, 659.25].forEach((freq, idx) => {
+             const osc = ctx.createOscillator();
+             const gain = ctx.createGain();
+             osc.type = 'sine';
+             osc.frequency.setValueAtTime(freq, ctx.currentTime + idx * 0.1);
+             gain.gain.setValueAtTime(0.12, ctx.currentTime + idx * 0.1);
+             gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + idx * 0.1 + 0.5);
+             osc.connect(gain);
+             gain.connect(ctx.destination);
+             osc.start(ctx.currentTime + idx * 0.1);
+             osc.stop(ctx.currentTime + idx * 0.1 + 0.5);
+         });
+     } else if (type === 'bgm') {
+         if (bgmOscillatorRef.current) return; // Already running
+         const osc = ctx.createOscillator();
+         const filter = ctx.createBiquadFilter();
+         const gain = ctx.createGain();
+
+         osc.type = 'sine';
+         osc.frequency.setValueAtTime(55, ctx.currentTime); // Low deep drone G1/A1 hum
+
+         // Subtle frequency modulation
+         osc.frequency.linearRampToValueAtTime(56, ctx.currentTime + 2);
+         osc.frequency.linearRampToValueAtTime(55, ctx.currentTime + 4);
+
+         filter.type = 'lowpass';
+         filter.frequency.value = 150;
+
+         gain.gain.setValueAtTime(0.35, ctx.currentTime);
+
+         osc.connect(filter);
+         filter.connect(gain);
+         gain.connect(ctx.destination);
+
+         osc.start();
+         bgmOscillatorRef.current = osc;
+     }
+  } catch (e) {
+     console.error("Synth Sound Error:", e);
+  }
+};
+
 const App: React.FC = () => {
   const [showExitModal, setShowExitModal] = useState(false);
   const [showSetup, setShowSetup] = useState(true); // Always show setup wizard on startup
@@ -49,10 +142,13 @@ const App: React.FC = () => {
   // 'browsing_pdf_1': First PDF displayed. Standard desktop hidden. Footer has only passworded power button.
   // 'boot_loading': Loading sequence screen for GOV-CORE OS
   // 'admin_desktop': High-security Admin Desktop showing 3 big software icons + PDF Viewer 2
-  const [puzzleState, setPuzzleState] = useState<'idle' | 'preparation' | 'locked' | 'browsing_pdf_1' | 'boot_loading' | 'admin_desktop'>('idle');
+  // 'retired': Emergency Retired State
+  const [puzzleState, setPuzzleState] = useState<'idle' | 'preparation' | 'locked' | 'browsing_pdf_1' | 'boot_loading' | 'admin_desktop' | 'retired'>('idle');
   const [puzzleInput, setPuzzleInput] = useState('');
   const [showPuzzleInputRaw, setShowPuzzleInputRaw] = useState(false);
   const [puzzleError, setPuzzleError] = useState(false);
+
+  const [showRetireConfirm, setShowRetireConfirm] = useState(false);
 
   // Admin Desktop Floating PDF 2 Window State
   const [adminPdfOpen, setAdminPdfOpen] = useState(false);
@@ -122,6 +218,27 @@ const App: React.FC = () => {
     activeAppId: openAppId
   }), [isConnected, isPaired, openAppId, emit]);
 
+  // Global click & keydown listeners for automatic high-fidelity Tap & Type sound effects and BGM bootstrap
+  useEffect(() => {
+    const handleGlobalClick = () => {
+         playSynthSound('bgm'); // Bootstrap loopable drone
+         playSynthSound('tap');
+    };
+    const handleGlobalKeydown = (e: KeyboardEvent) => {
+         // If typing in any input/textarea, play mechanical key ticks
+         const tag = document.activeElement?.tagName.toLowerCase();
+         if (tag === 'input' || tag === 'textarea') {
+              playSynthSound('type');
+         }
+    };
+    window.addEventListener('click', handleGlobalClick);
+    window.addEventListener('keydown', handleGlobalKeydown);
+    return () => {
+         window.removeEventListener('click', handleGlobalClick);
+         window.removeEventListener('keydown', handleGlobalKeydown);
+    };
+  }, []);
+
   // Master Clock & Override increment
   useEffect(() => {
     const timer = setInterval(() => {
@@ -137,6 +254,7 @@ const App: React.FC = () => {
   // Delay unskippable video 3 seconds after booting into Admin Desktop
   useEffect(() => {
     if (puzzleState === 'admin_desktop') {
+      playSynthSound('open');
       setAdminPdfOpen(true);
       const videoTimeout = setTimeout(() => {
         setVideoPlaying(true);
@@ -324,8 +442,17 @@ const App: React.FC = () => {
         break;
       }
       case 'PUZZLE_BROADCAST_VIDEO': {
+        playSynthSound('open');
         setVideoPlaying(true);
         setVideoProgress(0);
+        break;
+      }
+      case 'PUZZLE_RETIRE': {
+        setPuzzleState('retired');
+        break;
+      }
+      case 'PUZZLE_CANCEL_RETIRE': {
+        setPuzzleState('idle');
         break;
       }
     }
@@ -340,6 +467,7 @@ const App: React.FC = () => {
   const handleVerifyPuzzlePassword = () => {
     const eventPass = localStorage.getItem('pass_event') || 'EVT_TRIGGER_99';
     if (puzzleInput === eventPass) {
+      playSynthSound('success');
       setPuzzleState('browsing_pdf_1');
       setPuzzleInput('');
       setPuzzleError(false);
@@ -352,6 +480,7 @@ const App: React.FC = () => {
   const handlePowerVerifyPassword = () => {
     const adminPass = localStorage.getItem('pass_admin') || 'ADMIN_DASH';
     if (powerInput === adminPass) {
+      playSynthSound('success');
       setShowPowerPrompt(false);
       setPowerInput('');
       setPowerError(false);
@@ -389,6 +518,13 @@ const App: React.FC = () => {
   const displayClockStr = (timeOverride || time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
   const displayDateStr = (timeOverride || time).toLocaleDateString('ja-JP', { year: 'numeric', month: '2-digit', day: '2-digit', weekday: 'short' });
 
+  const handleConfirmEmergencyRetire = () => {
+     playSynthSound('success');
+     setShowRetireConfirm(false);
+     setPuzzleState('retired');
+     emit('CONNECTION_MSG', { text: 'EMERGENCY_RETIRE_TRIGGERED: Player initiated emergency retirement!' });
+  };
+
   return (
     <OSContext.Provider value={osContextValue}>
     <div className={`relative h-screen w-screen bg-[#050508] text-[#eaeaea] overflow-hidden ${isShaking ? 'animate-shake' : ''} ${isFrozen ? 'pointer-events-none select-none' : ''}`}>
@@ -402,6 +538,34 @@ const App: React.FC = () => {
                  className="fixed inset-0 z-[10000] bg-[#000000] flex flex-col items-center justify-center text-transparent cursor-none select-none pointer-events-none"
                >
                     [SYSTEM_TERMINATED]
+               </motion.div>
+          )}
+      </AnimatePresence>
+
+      {/* Emergency Retired Screen */}
+      <AnimatePresence>
+          {puzzleState === 'retired' && (
+               <motion.div
+                 initial={{ opacity: 0 }}
+                 animate={{ opacity: 1 }}
+                 className="fixed inset-0 z-[9500] bg-[#000000] flex flex-col items-center justify-center p-6 text-center select-none"
+               >
+                    <div className="scanlines z-0" />
+                    <motion.div
+                      initial={{ scale: 0.9, opacity: 0 }}
+                      animate={{ scale: 1, opacity: 1 }}
+                      className="max-w-md w-full glass-panel p-10 border-red-500/20 bg-black/40 flex flex-col items-center gap-6"
+                    >
+                         <ShieldAlert className="text-red-500 animate-pulse" size={64} />
+                         <div>
+                              <h2 className="text-lg font-black tracking-[0.2em] text-white uppercase">EMERGENCY_RETIRED</h2>
+                              <p className="text-[10px] text-red-500/80 uppercase font-mono mt-1 tracking-widest font-black">リタイア申請完了</p>
+                         </div>
+                         <div className="p-4 rounded-xl bg-red-950/20 border border-red-900/30 text-[11px] leading-relaxed text-red-400 font-mono text-left w-full">
+                              🚨 【警告】: 緊急リタイアが実行されました。
+                              管理端末（親機）からのロック解除操作を受信するまで、この端末での操作は一切行えません。
+                         </div>
+                    </motion.div>
                </motion.div>
           )}
       </AnimatePresence>
@@ -674,6 +838,20 @@ const App: React.FC = () => {
               {isConnected ? '接続確立' : '未同期'}
             </span>
           </div>
+
+          {/* Emergency Retire Trigger Button (Displayed persistently unless retired orTerminated) */}
+          {puzzleState !== 'idle' && puzzleState !== 'retired' && (
+              <button
+                onClick={() => {
+                    playSynthSound('open');
+                    setShowRetireConfirm(true);
+                }}
+                className="px-4 py-1 rounded-full bg-red-950/40 border border-red-500/30 text-red-500 text-[10px] font-bold uppercase tracking-widest hover:bg-red-950/70 transition-all flex items-center gap-1.5"
+              >
+                   <ShieldAlert size={12} />
+                   緊急リタイア
+              </button>
+          )}
         </div>
 
         <div className="flex items-center gap-8">
@@ -1200,6 +1378,49 @@ const App: React.FC = () => {
                     確認
                 </button>
             </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Emergency Retire Confirmation modal */}
+      <AnimatePresence>
+        {showRetireConfirm && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[9000] bg-black/85 backdrop-blur-sm flex items-center justify-center p-6"
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              className="w-full max-w-sm glass-panel p-8 text-center border-red-500/20 bg-black/40"
+            >
+              <ShieldAlert className="mx-auto mb-6 text-red-500/80 animate-pulse" size={48} />
+              <h2 className="text-lg font-black tracking-[0.2em] uppercase text-white">RETIRE_CONFIRM</h2>
+              <p className="text-xs text-red-500/80 uppercase font-mono tracking-widest mt-2">本当にリタイアしますか？</p>
+              <p className="text-[10px] text-white/40 mt-4 leading-relaxed uppercase">
+                   リタイアを実行すると、親機からの遠隔解除指示があるまで、それ以降の操作が一切行えなくなります。
+              </p>
+
+              <div className="flex gap-4 mt-8">
+                <button
+                    onClick={() => {
+                        playSynthSound('tap');
+                        setShowRetireConfirm(false);
+                    }}
+                    className="flex-1 py-3 rounded-xl border border-white/10 hover:bg-white/5 transition-all text-xs uppercase tracking-widest"
+                >
+                  いいえ
+                </button>
+                <button
+                    onClick={handleConfirmEmergencyRetire}
+                    className="flex-1 py-3 rounded-xl bg-red-900 hover:bg-red-800 text-white font-black text-xs uppercase tracking-widest transition-all shadow-[0_0_20px_rgba(239,68,68,0.2)]"
+                >
+                  はい、リタイアする
+                </button>
+              </div>
+            </motion.div>
           </motion.div>
         )}
       </AnimatePresence>
