@@ -249,3 +249,164 @@ app.whenReady().then(createWindow);
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
 });
+
+// ==========================================
+// Discord Bot & Speech Synthesis (TTS) Integration
+// ==========================================
+const { Client, GatewayIntentBits } = require('discord.js');
+const {
+  joinVoiceChannel,
+  createAudioPlayer,
+  createAudioResource,
+  AudioPlayerStatus
+} = require('@discordjs/voice');
+const fs = require('fs');
+
+let discordClient = null;
+let voiceConnection = null;
+let audioPlayer = null;
+let discordConfig = {
+  token: '',
+  channelId: '',
+  mdPath: ''
+};
+let parsedTriggers = {};
+
+// Parse markdown configuration file to read announcement triggers
+function loadMdConfig(mdPath) {
+  if (!mdPath || !fs.existsSync(mdPath)) {
+    console.log(`Markdown config path does not exist: "${mdPath}"`);
+    return {};
+  }
+  try {
+    const content = fs.readFileSync(mdPath, 'utf8');
+    const triggers = {};
+    const lines = content.split('\n');
+    for (const line of lines) {
+      const match = line.match(/^-\s*\*\*([A-Z0-9_]+)\*\*:\s*(.*)$/);
+      if (match) {
+        triggers[match[1]] = match[2].trim();
+      }
+    }
+    console.log('Successfully loaded Markdown triggers:', Object.keys(triggers));
+    return triggers;
+  } catch (err) {
+    console.error('Failed to parse md config:', err);
+    return {};
+  }
+}
+
+// Start, stop, or reconfigure Discord Bot connection
+function updateDiscordClient(config) {
+  discordConfig = { ...discordConfig, ...config };
+
+  if (config.mdPath) {
+    parsedTriggers = loadMdConfig(config.mdPath);
+  }
+
+  if (!discordConfig.token) {
+    console.log('No Bot Token provided, shutting down Discord connection.');
+    if (discordClient) {
+      discordClient.destroy();
+      discordClient = null;
+    }
+    sendDiscordStatus('DISCONNECTED');
+    return;
+  }
+
+  if (discordClient) {
+    discordClient.destroy();
+  }
+
+  sendDiscordStatus('CONNECTING');
+
+  discordClient = new Client({
+    intents: [
+      GatewayIntentBits.Guilds,
+      GatewayIntentBits.GuildVoiceStates,
+      GatewayIntentBits.GuildMessages
+    ]
+  });
+
+  discordClient.on('ready', async () => {
+    console.log(`Discord Bot successfully logged in as: ${discordClient.user.tag}`);
+    sendDiscordStatus('CONNECTED');
+    joinVoice(discordConfig.channelId);
+  });
+
+  discordClient.on('error', (err) => {
+    console.error('Discord Client error event:', err);
+    sendDiscordStatus('ERROR');
+  });
+
+  discordClient.login(discordConfig.token).catch(err => {
+    console.error('Failed to login to Discord:', err);
+    sendDiscordStatus('ERROR');
+  });
+}
+
+// Connect the bot to the specified voice channel
+function joinVoice(channelId) {
+  if (!discordClient || !channelId) return;
+
+  try {
+    const channel = discordClient.channels.cache.get(channelId);
+    if (!channel || channel.type !== 2) { // 2 is GuildVoice
+      console.error('Voice channel not found or is not a GuildVoice channel.');
+      return;
+    }
+
+    voiceConnection = joinVoiceChannel({
+      channelId: channel.id,
+      guildId: channel.guild.id,
+      adapterCreator: channel.guild.voiceAdapterCreator,
+      selfDeaf: false
+    });
+
+    audioPlayer = createAudioPlayer();
+    voiceConnection.subscribe(audioPlayer);
+    console.log(`Joined Discord Voice Channel: "${channel.name}"`);
+  } catch (err) {
+    console.error('Failed to join Discord voice channel:', err);
+  }
+}
+
+// Play TTS stream directly into the Discord Voice connection
+function playDiscordTts(text) {
+  if (!audioPlayer || !text) {
+    console.log('Discord audio player is not connected, skipped playing TTS.');
+    return;
+  }
+
+  try {
+    const ttsUrl = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(text)}&tl=ja&client=tw-ob`;
+    const resource = createAudioResource(ttsUrl);
+    audioPlayer.play(resource);
+    console.log(`Dispatched Voice TTS to channel: "${text}"`);
+  } catch (err) {
+    console.error('Failed to play Discord TTS stream:', err);
+  }
+}
+
+function sendDiscordStatus(status) {
+  if (mainWindow) {
+    mainWindow.webContents.send('DISCORD_STATUS_UPDATE', { status });
+  }
+}
+
+// IPC Listener hooks for Discord and config settings
+ipcMain.on('UPDATE_DISCORD_CONFIG', (event, config) => {
+  updateDiscordClient(config);
+});
+
+ipcMain.on('TRIGGER_DISCORD_TTS', (event, { triggerKey, fallbackText, variables }) => {
+  let template = parsedTriggers[triggerKey] || fallbackText;
+  if (template) {
+    if (variables) {
+      for (const [key, val] of Object.entries(variables)) {
+        template = template.replace(new RegExp(`{${key}}`, 'g'), val);
+      }
+    }
+    playDiscordTts(template);
+  }
+});

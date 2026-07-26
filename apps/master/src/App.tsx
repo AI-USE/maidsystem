@@ -54,6 +54,12 @@ const App: React.FC = () => {
   const [discordWebhook, setDiscordWebhook] = useState(localStorage.getItem('discordWebhook') || '');
   const [ttsEnabled, setTtsEnabled] = useState(localStorage.getItem('ttsEnabled') !== 'false');
 
+  // Discord Bot Connection States
+  const [discordToken, setDiscordToken] = useState(localStorage.getItem('discordToken') || '');
+  const [discordVoiceChannel, setDiscordVoiceChannel] = useState(localStorage.getItem('discordVoiceChannel') || '');
+  const [discordMdPath, setDiscordMdPath] = useState(localStorage.getItem('discordMdPath') || '');
+  const [discordStatus, setDiscordStatus] = useState<'DISCONNECTED' | 'CONNECTING' | 'CONNECTED' | 'ERROR'>('DISCONNECTED');
+
   // Local synchronized puzzle timer countdown state
   const [puzzleTimer, setPuzzleTimer] = useState<number | null>(null);
 
@@ -64,6 +70,21 @@ const App: React.FC = () => {
   useEffect(() => {
     connectedDevicesRef.current = connectedDevices;
   }, [connectedDevices]);
+
+  // Synchronize Discord connection state with Electron
+  const syncDiscordConfig = () => {
+    if ((window as any).electron) {
+      (window as any).electron.send('UPDATE_DISCORD_CONFIG', {
+        token: discordToken,
+        channelId: discordVoiceChannel,
+        mdPath: discordMdPath
+      });
+    }
+  };
+
+  useEffect(() => {
+    syncDiscordConfig();
+  }, [discordToken, discordVoiceChannel, discordMdPath]);
 
   // Synchronized puzzle countdown timer loop
   useEffect(() => {
@@ -80,16 +101,34 @@ const App: React.FC = () => {
             const text = `残り${mins}分です。`;
             speakAnnouncement(text);
             sendDiscordNotification(`【システムタイマー】⏳ ${text}`);
+            if ((window as any).electron) {
+              (window as any).electron.send('TRIGGER_DISCORD_TTS', {
+                triggerKey: `TIMER_${mins}`,
+                fallbackText: `残り時間、${mins}分です。`
+              });
+            }
           }
           // Announce last 10 seconds
           else if (next <= 10 && next > 0) {
             speakAnnouncement(String(next));
+            if ((window as any).electron) {
+              (window as any).electron.send('TRIGGER_DISCORD_TTS', {
+                triggerKey: `TIMER_${next}S`,
+                fallbackText: String(next)
+              });
+            }
           }
           // Announce termination
           else if (next === 0) {
             const text = "終了。ゲームシステムが停止されました。";
             speakAnnouncement(text);
             sendDiscordNotification(`【システムタイマー】🛑 ${text}`);
+            if ((window as any).electron) {
+              (window as any).electron.send('TRIGGER_DISCORD_TTS', {
+                triggerKey: 'FINISH',
+                fallbackText: '制限時間終了。ゲームオーバーです。システムを強制停止します。'
+              });
+            }
             return null;
           }
 
@@ -126,21 +165,45 @@ const App: React.FC = () => {
         if (text.includes('GAME_START_TRIGGERED')) {
            speakAnnouncement("ゲームスタート。ミッションを開始します。");
            sendDiscordNotification("【システム通知】🚀 ゲームスタート！ミッションが開始されました。制限時間7分。");
+           if ((window as any).electron) {
+              (window as any).electron.send('TRIGGER_DISCORD_TTS', {
+                triggerKey: 'START',
+                fallbackText: 'ゲームスタート。ミッションを開始します。制限時間は7分です。'
+              });
+           }
            setPuzzleTimer(420); // Starts the Master local 7-minute countdown
         } else if (text.includes('EMERGENCY_RETIRE_TRIGGERED')) {
            const devName = getDeviceName(deviceId);
            speakAnnouncement(`${devName}がリタイアしました。`);
            sendDiscordNotification(`🚨【緊急警告】${devName}が緊急リタイアしました！`);
+           if ((window as any).electron) {
+              (window as any).electron.send('TRIGGER_DISCORD_TTS', {
+                triggerKey: 'RETIRE',
+                fallbackText: `警告、警告。${devName}がリタイアしました。`,
+                variables: { name: devName }
+              });
+           }
 
            if (retireIntervalRef.current) clearInterval(retireIntervalRef.current);
            retireIntervalRef.current = setInterval(() => {
                speakAnnouncement(`${devName}リタイア`);
+               if ((window as any).electron) {
+                  (window as any).electron.send('TRIGGER_DISCORD_TTS', {
+                    triggerKey: 'RETIRE',
+                    fallbackText: `警告、警告。${devName}がリタイアしました。`,
+                    variables: { name: devName }
+                  });
+               }
            }, 5000);
         }
       });
 
       (window as any).electron.on('PENDING_APPROVALS_UPDATED', (list: any[]) => {
           setPendingApprovals(list);
+      });
+
+      (window as any).electron.on('DISCORD_STATUS_UPDATE', ({ status }: { status: any }) => {
+          setDiscordStatus(status);
       });
     }
   }, []);
@@ -265,6 +328,12 @@ const App: React.FC = () => {
     setPuzzleTimer(null);
     speakAnnouncement("謎解き準備が完了しました。ゲームを開始してください。");
     sendDiscordNotification("【システム通知】謎解き準備が完了しました。端末でスタートボタンを押してください。");
+    if ((window as any).electron) {
+        (window as any).electron.send('TRIGGER_DISCORD_TTS', {
+            triggerKey: 'PREPARE',
+            fallbackText: '謎解き準備が完了しました。端末のスタートボタンを押してゲームを開始してください。'
+        });
+    }
   };
 
   const handlePuzzleStop = () => {
@@ -277,6 +346,12 @@ const App: React.FC = () => {
     window.speechSynthesis.cancel();
     speakAnnouncement("解説が終了しました。");
     sendDiscordNotification("【システム通知】解説が終了しました。お疲れ様でした。");
+    if ((window as any).electron) {
+        (window as any).electron.send('TRIGGER_DISCORD_TTS', {
+            triggerKey: 'STOP',
+            fallbackText: '解説が終了しました。お疲れ様でした。'
+        });
+    }
   };
 
   const handlePuzzleRestart = () => {
@@ -289,6 +364,29 @@ const App: React.FC = () => {
     window.speechSynthesis.cancel();
     speakAnnouncement("謎解きシステムが再起動されました。準備完了です。");
     sendDiscordNotification("【システム通知】謎解きシステムが再起動されました。準備完了です。");
+    if ((window as any).electron) {
+        (window as any).electron.send('TRIGGER_DISCORD_TTS', {
+            triggerKey: 'PREPARE',
+            fallbackText: '謎解き準備が完了しました。端末のスタートボタンを押してゲームを開始してください。'
+        });
+    }
+  };
+
+  const handleCancelRetire = () => {
+    sendCommand('PUZZLE_CANCEL_RETIRE');
+    if (retireIntervalRef.current) {
+        clearInterval(retireIntervalRef.current);
+        retireIntervalRef.current = null;
+    }
+    window.speechSynthesis.cancel();
+    speakAnnouncement("リタイアが解除されました。");
+    sendDiscordNotification("【システム通知】リタイアが遠隔解除されました。ゲームを継続します。");
+    if ((window as any).electron) {
+        (window as any).electron.send('TRIGGER_DISCORD_TTS', {
+            triggerKey: 'CANCEL_RETIRE',
+            fallbackText: 'リタイアが遠隔解除されました。ゲームを継続します。'
+        });
+    }
   };
 
   // Scan for any connected device logs indicating emergency retirement
@@ -816,29 +914,75 @@ const App: React.FC = () => {
 
                           <div className="h-[1px] bg-white/10" />
 
-                          {/* Discord Webhook section */}
+                          {/* Discord API Bot Connection Settings */}
                           <div className="glass-panel p-8 bg-black/40 border-white/5 rounded-3xl space-y-6">
-                               <div className="flex items-center gap-4 text-white">
-                                    <MessageSquare size={24} className="text-blue-400" />
-                                    <div>
-                                         <h3 className="text-sm font-bold uppercase tracking-wider">Discord Webhook 連携設定</h3>
-                                         <p className="text-[10px] text-white/40 mt-0.5">謎解きのイベントログや緊急リタイア警告を Discord チャンネルへリアルタイム中継します。</p>
+                               <div className="flex items-center justify-between text-white">
+                                    <div className="flex items-center gap-4">
+                                         <Cpu size={24} className="text-blue-400" />
+                                         <div>
+                                              <h3 className="text-sm font-bold uppercase tracking-wider">Discord ボット連携設定</h3>
+                                              <p className="text-[10px] text-white/40 mt-0.5">ボイスチャンネルにボットを接続し、合成音声（TTS）をリアルタイム再生します。</p>
+                                         </div>
+                                    </div>
+                                    <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/5 border border-white/5">
+                                         <div className={`w-2 h-2 rounded-full ${discordStatus === 'CONNECTED' ? 'bg-green-400 shadow-[0_0_10px_rgba(74,222,128,0.5)]' : discordStatus === 'CONNECTING' ? 'bg-yellow-400 animate-pulse' : discordStatus === 'ERROR' ? 'bg-red-500 animate-pulse' : 'bg-white/10'}`} />
+                                         <span className="text-[9px] font-black uppercase tracking-wider font-mono">
+                                              {discordStatus === 'CONNECTED' && '接続中'}
+                                              {discordStatus === 'CONNECTING' && '接続試行中...'}
+                                              {discordStatus === 'ERROR' && '接続エラー'}
+                                              {discordStatus === 'DISCONNECTED' && '未接続'}
+                                         </span>
                                     </div>
                                </div>
 
-                               <div className="space-y-2">
-                                    <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest block">Webhook URL</label>
+                               <div className="grid grid-cols-2 gap-6 pt-2">
+                                    <div className="space-y-2">
+                                         <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest block">ボットトークン (API Key)</label>
+                                         <input
+                                              type="password"
+                                              placeholder="MTg4NDY..."
+                                              className="w-full bg-black/60 border border-white/10 rounded-xl px-4 py-3.5 text-xs font-mono text-white placeholder-white/20 outline-none focus:border-blue-500/50 transition-colors"
+                                              value={discordToken}
+                                              onChange={(e) => {
+                                                   const token = e.target.value;
+                                                   setDiscordToken(token);
+                                                   localStorage.setItem('discordToken', token);
+                                              }}
+                                         />
+                                    </div>
+
+                                    <div className="space-y-2">
+                                         <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest block">ボイスチャンネルID</label>
+                                         <input
+                                              type="text"
+                                              placeholder="104928..."
+                                              className="w-full bg-black/60 border border-white/10 rounded-xl px-4 py-3.5 text-xs font-mono text-white placeholder-white/20 outline-none focus:border-blue-500/50 transition-colors"
+                                              value={discordVoiceChannel}
+                                              onChange={(e) => {
+                                                   const ch = e.target.value;
+                                                   setDiscordVoiceChannel(ch);
+                                                   localStorage.setItem('discordVoiceChannel', ch);
+                                              }}
+                                         />
+                                    </div>
+                               </div>
+
+                               <div className="space-y-2 pt-2">
+                                    <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest block">通知用 Markdown 設定ファイルパス (.md)</label>
                                     <input
                                          type="text"
-                                         placeholder="https://discord.com/api/webhooks/..."
+                                         placeholder="C:\mados\notification.md"
                                          className="w-full bg-black/60 border border-white/10 rounded-xl px-4 py-3.5 text-xs font-mono text-white placeholder-white/20 outline-none focus:border-blue-500/50 transition-colors"
-                                         value={discordWebhook}
+                                         value={discordMdPath}
                                          onChange={(e) => {
-                                              const url = e.target.value;
-                                              setDiscordWebhook(url);
-                                              localStorage.setItem('discordWebhook', url);
+                                              const path = e.target.value;
+                                              setDiscordMdPath(path);
+                                              localStorage.setItem('discordMdPath', path);
                                          }}
                                     />
+                                    <p className="text-[8px] text-white/20 uppercase font-mono tracking-widest">
+                                         ※ 指定された .md ファイルから各トリガーメッセージ（PREPARE, START, TIMER, RETIRE 等）を自動読込します。
+                                    </p>
                                </div>
                           </div>
 
@@ -870,16 +1014,23 @@ const App: React.FC = () => {
                                <div className="text-xs font-bold uppercase tracking-widest text-white/40">動作テストエリア</div>
                                <div className="grid grid-cols-2 gap-4">
                                     <button
-                                         onClick={() => sendDiscordNotification("【テスト送信】親機からのDiscord接続テストは正常です。")}
+                                         onClick={() => {
+                                              if ((window as any).electron) {
+                                                   (window as any).electron.send('TRIGGER_DISCORD_TTS', {
+                                                        triggerKey: 'START',
+                                                        fallbackText: 'テスト：ボイスチャット接続良好。これよりミッションを開始します。'
+                                                   });
+                                              }
+                                         }}
                                          className="py-4 bg-white/5 hover:bg-white/10 border border-white/10 rounded-2xl text-[10px] font-bold uppercase tracking-widest transition-all"
                                     >
-                                         Webhook テスト送信
+                                         Discord TTS テスト再生
                                     </button>
                                     <button
                                          onClick={() => speakAnnouncement("音声合成テスト。親機スピーカー接続良好です。")}
                                          className="py-4 bg-white/5 hover:bg-white/10 border border-white/10 rounded-2xl text-[10px] font-bold uppercase tracking-widest transition-all"
                                     >
-                                         音声合成テスト再生
+                                         親機スピーカー テスト再生
                                     </button>
                                </div>
                           </div>
