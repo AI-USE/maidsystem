@@ -9,7 +9,8 @@ contextBridge.exposeInMainWorld('electron', {
       'REJECT_PAIRING',
       'REMOVE_DEVICE',
       'UPDATE_DISCORD_CONFIG',
-      'TRIGGER_DISCORD_TTS'
+      'TRIGGER_DISCORD_TTS',
+      'SET_EMERGENCY_STATE'
     ];
     if (validChannels.includes(channel)) {
       ipcRenderer.send(channel, data);

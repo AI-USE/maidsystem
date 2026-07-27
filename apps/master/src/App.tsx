@@ -62,6 +62,13 @@ const App: React.FC = () => {
   // Local synchronized puzzle timer countdown state
   const [puzzleTimer, setPuzzleTimer] = useState<number | null>(null);
 
+  const [isEmergencyActive, setIsEmergencyActive] = useState(false);
+  const isEmergencyActiveRef = React.useRef(false);
+
+  useEffect(() => {
+    isEmergencyActiveRef.current = isEmergencyActive;
+  }, [isEmergencyActive]);
+
   // References to handle timers and callbacks with fresh state
   const connectedDevicesRef = React.useRef<DeviceInfo[]>([]);
   const retireIntervalRef = React.useRef<any>(null);
@@ -172,26 +179,16 @@ const App: React.FC = () => {
            setPuzzleTimer(420); // Starts the Master local 7-minute countdown
         } else if (text.includes('EMERGENCY_RETIRE_TRIGGERED')) {
            const devName = getDeviceName(deviceId);
+           setIsEmergencyActive(true);
+           if ((window as any).electron) {
+              (window as any).electron.send('SET_EMERGENCY_STATE', { active: true, name: devName });
+           }
            speakAnnouncement(`${devName}がリタイアしました。`);
            sendDiscordNotification(`🚨【緊急警告】${devName}が緊急リタイアしました！`);
-           if ((window as any).electron) {
-              (window as any).electron.send('TRIGGER_DISCORD_TTS', {
-                triggerKey: 'RETIRE',
-                fallbackText: `警告、警告。${devName}がリタイアしました。`,
-                variables: { name: devName }
-              });
-           }
 
            if (retireIntervalRef.current) clearInterval(retireIntervalRef.current);
            retireIntervalRef.current = setInterval(() => {
                speakAnnouncement(`${devName}リタイア`);
-               if ((window as any).electron) {
-                  (window as any).electron.send('TRIGGER_DISCORD_TTS', {
-                    triggerKey: 'RETIRE',
-                    fallbackText: `警告、警告。${devName}がリタイアしました。`,
-                    variables: { name: devName }
-                  });
-               }
            }, 5000);
         }
       });
@@ -312,6 +309,11 @@ const App: React.FC = () => {
     const ttsVal = localStorage.getItem('ttsEnabled') !== 'false';
     if (!ttsVal) return;
 
+    if (isEmergencyActiveRef.current && !text.includes('リタイア') && !text.includes('解除')) {
+       console.log(`Local speech block: "${text}" is suppressed due to active emergency.`);
+       return;
+    }
+
     if ('speechSynthesis' in window) {
       window.speechSynthesis.cancel();
       const utterance = new SpeechSynthesisUtterance(text);
@@ -337,6 +339,10 @@ const App: React.FC = () => {
   const handlePuzzleStop = () => {
     sendCommand('PUZZLE_STOP');
     setPuzzleTimer(null);
+    setIsEmergencyActive(false);
+    if ((window as any).electron) {
+        (window as any).electron.send('SET_EMERGENCY_STATE', { active: false });
+    }
     if (retireIntervalRef.current) {
         clearInterval(retireIntervalRef.current);
         retireIntervalRef.current = null;
@@ -355,6 +361,10 @@ const App: React.FC = () => {
   const handlePuzzleRestart = () => {
     sendCommand('PUZZLE_RESTART');
     setPuzzleTimer(null);
+    setIsEmergencyActive(false);
+    if ((window as any).electron) {
+        (window as any).electron.send('SET_EMERGENCY_STATE', { active: false });
+    }
     if (retireIntervalRef.current) {
         clearInterval(retireIntervalRef.current);
         retireIntervalRef.current = null;
@@ -372,6 +382,10 @@ const App: React.FC = () => {
 
   const handleCancelRetire = () => {
     sendCommand('PUZZLE_CANCEL_RETIRE');
+    setIsEmergencyActive(false);
+    if ((window as any).electron) {
+        (window as any).electron.send('SET_EMERGENCY_STATE', { active: false });
+    }
     if (retireIntervalRef.current) {
         clearInterval(retireIntervalRef.current);
         retireIntervalRef.current = null;

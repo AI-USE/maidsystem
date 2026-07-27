@@ -239,7 +239,15 @@ const App: React.FC = () => {
   // Global click & keydown listeners for automatic high-fidelity Tap & Type sound effects and BGM bootstrap
   useEffect(() => {
     const handleGlobalClick = () => {
-         playSynthSound('bgm'); // Bootstrap loopable drone
+         const shouldPlayBgm =
+           puzzleState !== 'idle' &&
+           puzzleState !== 'retired' &&
+           !videoPlaying &&
+           timerSeconds !== 0;
+
+         if (shouldPlayBgm) {
+             playSynthSound('bgm');
+         }
          playSynthSound('tap');
     };
     const handleGlobalKeydown = (e: KeyboardEvent) => {
@@ -255,7 +263,34 @@ const App: React.FC = () => {
          window.removeEventListener('click', handleGlobalClick);
          window.removeEventListener('keydown', handleGlobalKeydown);
     };
-  }, []);
+  }, [puzzleState, videoPlaying, timerSeconds]);
+
+  // Automatic background music (BGM) playback lifecycle control
+  useEffect(() => {
+    const shouldPlayBgm =
+      puzzleState !== 'idle' &&
+      puzzleState !== 'retired' &&
+      !videoPlaying &&
+      timerSeconds !== 0;
+
+    if (shouldPlayBgm) {
+      if (bgmAudioRef.current) {
+          bgmAudioRef.current.play().catch(e => console.log("BGM play catch:", e));
+      } else {
+          playSynthSound('bgm');
+      }
+    } else {
+      if (bgmAudioRef.current) {
+          bgmAudioRef.current.pause();
+      }
+      if (bgmOscillatorRef.current) {
+          try {
+              bgmOscillatorRef.current.stop();
+          } catch(e){}
+          bgmOscillatorRef.current = null;
+      }
+    }
+  }, [puzzleState, videoPlaying, timerSeconds]);
 
   // Master Clock & Override increment
   useEffect(() => {

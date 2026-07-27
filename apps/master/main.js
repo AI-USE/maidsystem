@@ -268,6 +268,10 @@ let discordConfig = {
   channelId: ''
 };
 
+let emergencyActive = false;
+let emergencyInterval = null;
+let emergencyText = '';
+
 // Built-in announcements for escape room events
 const defaultTriggers = {
   PREPARE: '謎解き準備が完了しました。端末のスタートボタンを押してゲームを開始してください。',
@@ -394,6 +398,11 @@ ipcMain.on('UPDATE_DISCORD_CONFIG', (event, config) => {
 });
 
 ipcMain.on('TRIGGER_DISCORD_TTS', (event, { triggerKey, fallbackText, variables }) => {
+  if (emergencyActive && triggerKey !== 'RETIRE' && triggerKey !== 'CANCEL_RETIRE') {
+    console.log(`TTS trigger "${triggerKey}" blocked because emergency state is active.`);
+    return;
+  }
+
   let template = defaultTriggers[triggerKey] || fallbackText;
   if (template) {
     if (variables) {
@@ -402,5 +411,55 @@ ipcMain.on('TRIGGER_DISCORD_TTS', (event, { triggerKey, fallbackText, variables 
       }
     }
     playDiscordTts(template);
+  }
+});
+
+ipcMain.on('SET_EMERGENCY_STATE', (event, { active, name }) => {
+  console.log(`SET_EMERGENCY_STATE received: active = ${active}, name = ${name}`);
+
+  if (active) {
+    emergencyActive = true;
+
+    if (audioPlayer) {
+      try {
+        audioPlayer.stop();
+      } catch (err) {
+        console.error('Failed to stop audio player on emergency:', err);
+      }
+    }
+
+    const devName = name || '端末';
+    emergencyText = `警告、警告。${devName}がリタイアしました。親機での解除を待機しています。`;
+
+    if (emergencyInterval) {
+      clearInterval(emergencyInterval);
+    }
+
+    playDiscordTts(emergencyText);
+
+    // Loop/Repeat every 8 seconds to continuously broadcast the emergency warning
+    emergencyInterval = setInterval(() => {
+      if (emergencyActive) {
+        console.log(`Looping emergency Discord TTS: "${emergencyText}"`);
+        playDiscordTts(emergencyText);
+      }
+    }, 8000);
+
+  } else {
+    emergencyActive = false;
+    if (emergencyInterval) {
+      clearInterval(emergencyInterval);
+      emergencyInterval = null;
+    }
+
+    if (audioPlayer) {
+      try {
+        audioPlayer.stop();
+      } catch (err) {
+        console.error('Failed to stop audio player on emergency clearance:', err);
+      }
+    }
+
+    console.log('Emergency state cleared on Discord Voice Bot.');
   }
 });
