@@ -32,6 +32,7 @@ import { useRemoteControl } from './hooks/useRemoteControl';
 // Web Audio API Synthesizer for high-fidelity sci-fi SFX and loopable ambient BGM
 const synthContextRef: { current: AudioContext | null } = { current: null };
 const bgmOscillatorRef: { current: OscillatorNode | null } = { current: null };
+const bgmAudioRef: { current: HTMLAudioElement | null } = { current: null };
 
 const playSynthSound = (type: 'tap' | 'type' | 'open' | 'success' | 'bgm') => {
   try {
@@ -93,29 +94,46 @@ const playSynthSound = (type: 'tap' | 'type' | 'open' | 'success' | 'bgm') => {
              osc.stop(ctx.currentTime + idx * 0.1 + 0.5);
          });
      } else if (type === 'bgm') {
-         if (bgmOscillatorRef.current) return; // Already running
-         const osc = ctx.createOscillator();
-         const filter = ctx.createBiquadFilter();
-         const gain = ctx.createGain();
+         if (bgmAudioRef.current || bgmOscillatorRef.current) return; // Already running
 
-         osc.type = 'sine';
-         osc.frequency.setValueAtTime(55, ctx.currentTime); // Low deep drone G1/A1 hum
+         const audio = new Audio('bgm.mp3');
+         audio.loop = true;
+         audio.volume = 0.5;
+         bgmAudioRef.current = audio;
 
-         // Subtle frequency modulation
-         osc.frequency.linearRampToValueAtTime(56, ctx.currentTime + 2);
-         osc.frequency.linearRampToValueAtTime(55, ctx.currentTime + 4);
+         audio.play()
+           .then(() => {
+               console.log("Successfully started real MP3 background music in infinite loop.");
+           })
+           .catch(err => {
+               console.warn("Could not play bgm.mp3, falling back to synthesized deep hum BGM:", err);
+               bgmAudioRef.current = null;
 
-         filter.type = 'lowpass';
-         filter.frequency.value = 150;
+               if (!bgmOscillatorRef.current) {
+                   const osc = ctx.createOscillator();
+                   const filter = ctx.createBiquadFilter();
+                   const gain = ctx.createGain();
 
-         gain.gain.setValueAtTime(0.35, ctx.currentTime);
+                   osc.type = 'sine';
+                   osc.frequency.setValueAtTime(55, ctx.currentTime); // Low deep drone G1/A1 hum
 
-         osc.connect(filter);
-         filter.connect(gain);
-         gain.connect(ctx.destination);
+                   // Subtle frequency modulation
+                   osc.frequency.linearRampToValueAtTime(56, ctx.currentTime + 2);
+                   osc.frequency.linearRampToValueAtTime(55, ctx.currentTime + 4);
 
-         osc.start();
-         bgmOscillatorRef.current = osc;
+                   filter.type = 'lowpass';
+                   filter.frequency.value = 150;
+
+                   gain.gain.setValueAtTime(0.35, ctx.currentTime);
+
+                   osc.connect(filter);
+                   filter.connect(gain);
+                   gain.connect(ctx.destination);
+
+                   osc.start();
+                   bgmOscillatorRef.current = osc;
+               }
+           });
      }
   } catch (e) {
      console.error("Synth Sound Error:", e);
@@ -305,13 +323,17 @@ const App: React.FC = () => {
 
   useEffect(() => {
     if ((window as any).electron) {
-      const handleShowExit = () => setShowExitModal(true);
+      const handleShowExit = () => {
+          playSynthSound('open');
+          setShowExitModal(true);
+      };
       const handleMasterFound = (url: string) => {
           setMasterUrl(url);
           localStorage.setItem('masterUrl', url);
           setShowSetup(false);
       };
       const handlePasswordAction = (action: string) => {
+          playSynthSound('success');
           if (action === 'SHOW_SETUP') {
               setShowSetup(true);
               setShowExitModal(false);
