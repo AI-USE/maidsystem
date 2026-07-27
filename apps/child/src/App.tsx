@@ -155,16 +155,17 @@ const App: React.FC = () => {
 
   // Puzzle State Machine
   // 'idle': Setup / Initial phase
-  // 'preparation': Standard preparation screen with START button
   // 'locked': Fullscreen locked screen overlay, 7-minute timer, clock forced to 23:53:40
   // 'browsing_pdf_1': First PDF displayed. Standard desktop hidden. Footer has only passworded power button.
   // 'boot_loading': Loading sequence screen for GOV-CORE OS
   // 'admin_desktop': High-security Admin Desktop showing 3 big software icons + PDF Viewer 2
   // 'retired': Emergency Retired State
-  const [puzzleState, setPuzzleState] = useState<'idle' | 'preparation' | 'locked' | 'browsing_pdf_1' | 'boot_loading' | 'admin_desktop' | 'retired'>('idle');
+  const [puzzleState, setPuzzleState] = useState<'idle' | 'locked' | 'browsing_pdf_1' | 'boot_loading' | 'admin_desktop' | 'retired'>('idle');
   const [puzzleInput, setPuzzleInput] = useState('');
   const [showPuzzleInputRaw, setShowPuzzleInputRaw] = useState(false);
   const [puzzleError, setPuzzleError] = useState(false);
+  const [isPaused, setIsPaused] = useState(false);
+  const pauseAnnouncementIntervalRef = useRef<any>(null);
 
   const [showRetireConfirm, setShowRetireConfirm] = useState(false);
 
@@ -243,6 +244,7 @@ const App: React.FC = () => {
            puzzleState !== 'idle' &&
            puzzleState !== 'retired' &&
            !videoPlaying &&
+           !isPaused &&
            timerSeconds !== 0;
 
          if (shouldPlayBgm) {
@@ -263,7 +265,7 @@ const App: React.FC = () => {
          window.removeEventListener('click', handleGlobalClick);
          window.removeEventListener('keydown', handleGlobalKeydown);
     };
-  }, [puzzleState, videoPlaying, timerSeconds]);
+  }, [puzzleState, videoPlaying, timerSeconds, isPaused]);
 
   // Automatic background music (BGM) playback lifecycle control
   useEffect(() => {
@@ -271,6 +273,7 @@ const App: React.FC = () => {
       puzzleState !== 'idle' &&
       puzzleState !== 'retired' &&
       !videoPlaying &&
+      !isPaused &&
       timerSeconds !== 0;
 
     if (shouldPlayBgm) {
@@ -290,35 +293,62 @@ const App: React.FC = () => {
           bgmOscillatorRef.current = null;
       }
     }
-  }, [puzzleState, videoPlaying, timerSeconds]);
+  }, [puzzleState, videoPlaying, timerSeconds, isPaused]);
+
+  // Handle repeating TTS for pause state
+  useEffect(() => {
+    if (isPaused) {
+      const speakAnnouncementLocal = (text: string) => {
+        if ('speechSynthesis' in window) {
+          window.speechSynthesis.cancel();
+          const utterance = new SpeechSynthesisUtterance(text);
+          utterance.lang = 'ja-JP';
+          utterance.rate = 1.0;
+          window.speechSynthesis.speak(utterance);
+        }
+      };
+
+      speakAnnouncementLocal("現在ゲーム停止中");
+      pauseAnnouncementIntervalRef.current = setInterval(() => {
+         speakAnnouncementLocal("現在ゲーム停止中");
+      }, 5000);
+    } else {
+      if (pauseAnnouncementIntervalRef.current) {
+        clearInterval(pauseAnnouncementIntervalRef.current);
+        pauseAnnouncementIntervalRef.current = null;
+      }
+      if ('speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+      }
+    }
+    return () => {
+      if (pauseAnnouncementIntervalRef.current) {
+        clearInterval(pauseAnnouncementIntervalRef.current);
+      }
+    };
+  }, [isPaused]);
 
   // Master Clock & Override increment
   useEffect(() => {
     const timer = setInterval(() => {
       setTime(new Date());
       setTimeOverride(prev => {
-        if (!prev) return null;
+        if (!prev || isPaused) return prev;
         return new Date(prev.getTime() + 1000);
       });
     }, 1000);
     return () => clearInterval(timer);
-  }, []);
+  }, [isPaused]);
 
-  // Delay unskippable video 3 seconds after booting into Admin Desktop
+  // Delay opening PDF but don't play unskippable video on Admin Desktop load
   useEffect(() => {
     if (puzzleState === 'admin_desktop') {
       playSynthSound('open');
       setAdminPdfOpen(true);
-      const videoTimeout = setTimeout(() => {
-        setVideoPlaying(true);
-        setVideoProgress(0);
-      }, 3000);
-
-      return () => clearTimeout(videoTimeout);
     }
   }, [puzzleState]);
 
-  // Handle mock video playback progress and automatic dismissal
+  // Handle mock video playback progress and automatic dismissal (when videoPlaying)
   useEffect(() => {
     let interval: any;
     if (videoPlaying) {
@@ -327,11 +357,6 @@ const App: React.FC = () => {
           if (prev >= 100) {
             clearInterval(interval);
             setVideoPlaying(false);
-
-            // Transition state machine based on active state
-            if (puzzleState === 'preparation') {
-               setPuzzleState('locked');
-            }
             return 100;
           }
           return prev + 1; // 100 steps total, takes ~10 seconds at 100ms interval
@@ -339,22 +364,28 @@ const App: React.FC = () => {
       }, 100);
     }
     return () => clearInterval(interval);
-  }, [videoPlaying, puzzleState]);
+  }, [videoPlaying]);
 
   // Execution Countdown Timer
   // Starts ticking only after preparation is complete (i.e. 'locked', 'browsing_pdf_1', or 'admin_desktop')
   useEffect(() => {
     let interval: any;
-    if (timerSeconds !== null && timerSeconds > 0 && puzzleState !== 'preparation' && puzzleState !== 'idle') {
+    if (timerSeconds !== null && timerSeconds > 0 && puzzleState !== 'idle' && !isPaused) {
       interval = setInterval(() => {
         setTimerSeconds(prev => {
-          if (prev && prev > 0) return prev - 1;
+          if (prev && prev > 1) return prev - 1;
+          if (prev === 1) {
+             // 7 minutes expiration: play direct unskippable video, then black out.
+             setVideoPlaying(true);
+             setVideoProgress(0);
+             return 0;
+          }
           return 0;
         });
       }, 1000);
     }
     return () => clearInterval(interval);
-  }, [timerSeconds, puzzleState]);
+  }, [timerSeconds, puzzleState, isPaused]);
 
   useEffect(() => {
     if ((window as any).electron) {
@@ -397,12 +428,14 @@ const App: React.FC = () => {
       const savedExit = localStorage.getItem('pass_exit');
       const savedEvent = localStorage.getItem('pass_event');
       const savedAdmin = localStorage.getItem('pass_admin');
-      if (savedExit || savedEvent || savedAdmin) {
+      const savedSetup = localStorage.getItem('pass_setup');
+      if (savedExit || savedEvent || savedAdmin || savedSetup) {
           (window as any).electron.send('UPDATE_CONFIG', {
               passwords: {
                   exit: savedExit || 'MADREST104',
                   event: savedEvent || 'EVT_TRIGGER_99',
-                  admin: savedAdmin || 'ADMIN_DASH'
+                  admin: savedAdmin || 'ADMIN_DASH',
+                  setup: savedSetup || 'ADMIN_SETUP'
               }
           });
       }
@@ -473,16 +506,19 @@ const App: React.FC = () => {
         // Set execution countdown to exactly 7 minutes (420 seconds)
         setTimerSeconds(420);
 
-        setPuzzleState('preparation');
+        // Bypasses preparation screen, transitions directly to locked state
+        setPuzzleState('locked');
         setPuzzleInput('');
         setPuzzleError(false);
         setExecutionAborted(false);
+        setIsPaused(false);
         break;
       }
       case 'PUZZLE_STOP':
         setPuzzleState('idle');
         setTimeOverride(null);
         setTimerSeconds(null);
+        setIsPaused(false);
         break;
       case 'PUZZLE_RESTART': {
         const targetTime = new Date();
@@ -490,12 +526,21 @@ const App: React.FC = () => {
         setTimeOverride(targetTime);
         setTimerSeconds(420);
 
-        setPuzzleState('preparation');
+        setPuzzleState('locked');
         setPuzzleInput('');
         setPuzzleError(false);
         setExecutionAborted(false);
         setOverrideSubmitted(false);
         setOverrideText('');
+        setIsPaused(false);
+        break;
+      }
+      case 'PUZZLE_PAUSE': {
+        setIsPaused(true);
+        break;
+      }
+      case 'PUZZLE_RESUME': {
+        setIsPaused(false);
         break;
       }
       case 'PUZZLE_BROADCAST_VIDEO': {
@@ -518,6 +563,12 @@ const App: React.FC = () => {
   const handleVerifyPassword = () => {
     if ((window as any).electron) {
       (window as any).electron.send('VERIFY_PASSWORD', exitPassword);
+    }
+  };
+
+  const handleVerifySetupPassword = (password: string) => {
+    if ((window as any).electron) {
+      (window as any).electron.send('VERIFY_SETUP_PASSWORD', password);
     }
   };
 
@@ -586,15 +637,44 @@ const App: React.FC = () => {
     <OSContext.Provider value={osContextValue}>
     <div className={`relative h-screen w-screen bg-[#050508] text-[#eaeaea] overflow-hidden ${isShaking ? 'animate-shake' : ''} ${isFrozen ? 'pointer-events-none select-none' : ''}`}>
 
-      {/* Screen Complete Blackout Phase once countdown timerSeconds reaches exactly 0 */}
+      {/* Screen Complete Blackout Phase once countdown timerSeconds reaches exactly 0 and video finished */}
       <AnimatePresence>
-          {timerSeconds === 0 && !executionAborted && (
+          {timerSeconds === 0 && !executionAborted && !videoPlaying && (
                <motion.div
                  initial={{ opacity: 0 }}
                  animate={{ opacity: 1 }}
                  className="fixed inset-0 z-[10000] bg-[#000000] flex flex-col items-center justify-center text-transparent cursor-none select-none pointer-events-none"
                >
                     [SYSTEM_TERMINATED]
+               </motion.div>
+          )}
+      </AnimatePresence>
+
+      {/* Pause Mode Overlay Screen */}
+      <AnimatePresence>
+          {isPaused && (
+               <motion.div
+                 initial={{ opacity: 0 }}
+                 animate={{ opacity: 1 }}
+                 className="fixed inset-0 z-[9600] bg-[#0d0d0f]/95 flex flex-col items-center justify-center p-6 text-center select-none"
+               >
+                    <div className="absolute inset-0 bg-[radial-gradient(rgba(234,179,8,0.15)_1px,transparent_1px)] [background-size:16px_16px]" />
+                    <motion.div
+                      initial={{ scale: 0.9, opacity: 0 }}
+                      animate={{ scale: 1, opacity: 1 }}
+                      className="max-w-md w-full glass-panel p-10 border-yellow-500/30 bg-black/80 flex flex-col items-center gap-6 shadow-[0_0_50px_rgba(234,179,8,0.2)]"
+                    >
+                         <AlertCircle className="text-yellow-500 animate-pulse" size={64} />
+                         <div>
+                              <h2 className="text-xl font-black tracking-[0.2em] text-white uppercase">SYSTEM_PAUSED</h2>
+                              <p className="text-[11px] text-yellow-500 uppercase font-mono mt-1 tracking-widest font-bold">現在ゲーム停止中</p>
+                         </div>
+                         <div className="p-4 rounded-xl bg-yellow-950/20 border border-yellow-900/30 text-[11px] leading-relaxed text-yellow-400 font-mono text-left w-full">
+                              ⚠️ 【システム一時停止】:
+                              ただいま安全管理のため進行を一時的に中断しています。
+                              再開されるまでそのままお待ちください。
+                         </div>
+                    </motion.div>
                </motion.div>
           )}
       </AnimatePresence>
@@ -628,43 +708,6 @@ const App: React.FC = () => {
       </AnimatePresence>
 
       <AnimatePresence>
-          {/* Phase 0: Preparation Screen with START button */}
-          {puzzleState === 'preparation' && (
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                className="fixed inset-0 z-[500] bg-[#050508] flex flex-col items-center justify-center p-6 text-center"
-              >
-                  <div className="scanlines z-0" />
-                  <motion.div
-                    initial={{ scale: 0.95, y: 15 }}
-                    animate={{ scale: 1, y: 0 }}
-                    className="w-full max-w-md glass-panel p-10 rounded-[32px] border-red-900/30 bg-black/40 relative z-10 flex flex-col items-center shadow-[0_32px_64px_-12px_rgba(0,0,0,0.9)]"
-                  >
-                      <div className="w-16 h-16 bg-red-950/40 rounded-[24px] flex items-center justify-center mb-8 border border-red-500/30 animate-pulse">
-                          <Cpu className="text-red-500" size={32} />
-                      </div>
-
-                      <h2 className="text-xl font-black tracking-[0.3em] text-white uppercase mb-2">GOV-CORE OS</h2>
-                      <p className="text-[10px] text-red-500/80 uppercase tracking-[0.1em] font-bold mb-10 max-w-xs leading-relaxed">
-                          準備完了。ミッションを開始するにはSTARTボタンを押してください。
-                      </p>
-
-                      <button
-                          onClick={() => {
-                              setVideoPlaying(true);
-                              setVideoProgress(0);
-                              emit('CONNECTION_MSG', { text: 'GAME_START_TRIGGERED: Game Start video signal.' });
-                          }}
-                          className="w-full py-5 rounded-2xl bg-red-900 hover:bg-red-800 text-white font-black text-sm uppercase tracking-[0.3em] transition-all flex items-center justify-center gap-2 shadow-[0_0_30px_rgba(239,68,68,0.3)] hover:scale-[1.02]"
-                      >
-                          START
-                      </button>
-                  </motion.div>
-              </motion.div>
-          )}
-
           {/* Phase 1: Custom restricted passcode screen */}
           {puzzleState === 'locked' && (
               <motion.div
@@ -793,7 +836,7 @@ const App: React.FC = () => {
                   </div>
 
                   <div className="absolute top-10 right-10 flex items-center gap-2 px-3 py-1 bg-red-950/40 border border-red-500/30 rounded text-red-500 font-bold text-[10px] uppercase tracking-widest animate-pulse">
-                      ● LIVE RECEPTION
+                      ● EMERGENCY OVERRIDE RECEPTION
                   </div>
 
                   {/* Main Player Screen Container simulating real security playback */}
@@ -811,16 +854,15 @@ const App: React.FC = () => {
                             </motion.div>
 
                             <div>
-                                 <h1 className="text-2xl font-black text-white tracking-[0.3em] uppercase">緊急強制システム介入配信</h1>
+                                 <h1 className="text-2xl font-black text-white tracking-[0.3em] uppercase">緊急致死処分シークエンス</h1>
                                  <p className="text-xs text-red-500/80 uppercase font-bold tracking-widest mt-2">
-                                      UNAUTHORIZED OVERRIDE SIGNAL DETECTED
+                                      CRITICAL SYSTEM OVERRIDE PROTOCOL INITIATED
                                  </p>
                             </div>
 
                             <div className="space-y-2 p-6 bg-black/60 rounded-2xl border border-white/5 text-left text-[11px] leading-relaxed text-white/60">
-                                 <div>[SYSTEM_STATUS] CRYPTO ENGINE SYNCHRONIZING WITH FLEET...</div>
-                                 <div>[TELEMETRY] CELL CORE DISSOLUTION TIME REMAINING: {Math.max(0, Math.floor((100 - videoProgress) / 10))}s</div>
-                                 <div className="text-red-500 font-bold animate-pulse">[WARN] INTERACTION IS TEMPORARILY SUSPENDED DURING FEED TRANSMISSION.</div>
+                                 <div>[SYSTEM_STATUS] CRYPTO EXPIRED. DISSOLUTION TIME REACHED 0.</div>
+                                 <div className="text-red-500 font-bold animate-pulse">[WARN] TERMINAL IS SHUTTING DOWN IMMINENTLY.</div>
                             </div>
                        </div>
 
@@ -835,7 +877,7 @@ const App: React.FC = () => {
                   </div>
 
                   <div className="mt-8 text-center text-xs text-white/30 uppercase tracking-[0.2em] animate-pulse">
-                       ※ この重要なビデオ配信が終了するまで、システム操作は一切ロックされます。
+                       ※ 処分完了までシステムは完全に強制ロックされます。
                   </div>
               </motion.div>
           )}
@@ -1306,7 +1348,11 @@ const App: React.FC = () => {
                   <div className="text-[9px] font-bold text-white/30 uppercase tracking-[0.2em] px-2 font-mono">GOV-CORE DOCK</div>
                   <div className="w-[1px] h-6 bg-white/10 mx-1" />
                   <button
-                    onClick={() => setShowExitModal(true)}
+                    onClick={() => {
+                      // Trigger customized setup password prompt instead of directly showing exit modal
+                      playSynthSound('open');
+                      setShowExitModal(true);
+                    }}
                     className="p-3 rounded-2xl text-white/20 hover:text-red-500 hover:bg-red-500/10 transition-all"
                   >
                     <Power size={20} />
@@ -1501,24 +1547,29 @@ const App: React.FC = () => {
               <h2 className="text-lg font-bold mb-2 tracking-widest uppercase">システム制限</h2>
               <p className="text-xs text-white/40 mb-8 uppercase tracking-tighter">許可された担当者のみアクセス可能です</p>
 
-              <div className="relative mb-2">
-                <input
-                    type={showPasswordRaw ? "text" : "password"}
-                    autoFocus
-                    className={`w-full bg-white/5 border rounded-xl px-4 py-4 text-center outline-none focus:border-white/30 transition-all text-xl tracking-[0.5em] ${passwordError ? 'border-red-500' : 'border-white/10'}`}
-                    value={exitPassword}
-                    onChange={(e) => {
-                        setExitPassword(e.target.value);
-                        if (passwordError) setPasswordError(false);
-                    }}
-                    onKeyDown={(e) => e.key === 'Enter' && handleVerifyPassword()}
-                />
-                <button
-                    onClick={() => setShowPasswordRaw(!showPasswordRaw)}
-                    className="absolute right-4 top-1/2 -translate-y-1/2 p-2 text-white/20 hover:text-white transition-colors"
-                >
-                    {showPasswordRaw ? <EyeOff size={16} /> : <Eye size={16} />}
-                </button>
+              <div className="space-y-4">
+                  <div>
+                    <label className="text-[10px] uppercase tracking-widest text-white/40 block text-left mb-1 ml-1">管理者ツール起動または終了用パスコード</label>
+                    <div className="relative">
+                      <input
+                          type={showPasswordRaw ? "text" : "password"}
+                          autoFocus
+                          className={`w-full bg-white/5 border rounded-xl px-4 py-3 text-center outline-none focus:border-white/30 transition-all text-sm font-mono tracking-[0.2em] ${passwordError ? 'border-red-500' : 'border-white/10'}`}
+                          value={exitPassword}
+                          onChange={(e) => {
+                              setExitPassword(e.target.value);
+                              if (passwordError) setPasswordError(false);
+                          }}
+                          onKeyDown={(e) => e.key === 'Enter' && handleVerifyPassword()}
+                      />
+                      <button
+                          onClick={() => setShowPasswordRaw(!showPasswordRaw)}
+                          className="absolute right-4 top-1/2 -translate-y-1/2 p-2 text-white/20 hover:text-white transition-colors"
+                      >
+                          {showPasswordRaw ? <EyeOff size={16} /> : <Eye size={16} />}
+                      </button>
+                    </div>
+                  </div>
               </div>
 
               <div className="h-4 mb-4">
@@ -1541,7 +1592,19 @@ const App: React.FC = () => {
                   キャンセル
                 </button>
                 <button
-                    onClick={handleVerifyPassword}
+                    onClick={() => {
+                       // Check custom setup password first
+                       const customSetup = localStorage.getItem('pass_setup') || 'ADMIN_SETUP';
+                       if (exitPassword === customSetup) {
+                           playSynthSound('success');
+                           setShowSetup(true);
+                           setShowExitModal(false);
+                           setExitPassword('');
+                           setPasswordError(false);
+                       } else {
+                           handleVerifyPassword();
+                       }
+                    }}
                     className="flex-1 py-3 rounded-xl bg-white text-black font-bold text-xs uppercase tracking-widest hover:bg-white/90 transition-all"
                 >
                   実行

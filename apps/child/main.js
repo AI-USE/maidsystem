@@ -13,7 +13,8 @@ const CONFIG_PATH = path.join(app.getPath('userData'), 'mados_config.json');
 let PASSWORDS = {
   exit: process.env.MADOS_PASS_EXIT || 'MADREST104',
   event: process.env.MADOS_PASS_EVENT || 'EVT_TRIGGER_99',
-  admin: process.env.MADOS_PASS_ADMIN || 'ADMIN_DASH'
+  admin: process.env.MADOS_PASS_ADMIN || 'ADMIN_DASH',
+  setup: process.env.MADOS_PASS_SETUP || 'ADMIN_SETUP'
 };
 
 function loadConfig() {
@@ -25,6 +26,7 @@ function loadConfig() {
             PASSWORDS.exit = data.passwords?.exit || process.env.MADOS_PASS_EXIT || PASSWORDS.exit;
             PASSWORDS.event = data.passwords?.event || process.env.MADOS_PASS_EVENT || PASSWORDS.event;
             PASSWORDS.admin = data.passwords?.admin || process.env.MADOS_PASS_ADMIN || PASSWORDS.admin;
+            PASSWORDS.setup = data.passwords?.setup || process.env.MADOS_PASS_SETUP || PASSWORDS.setup;
 
             if (data.kiosk !== undefined) kioskMode = data.kiosk;
             console.log('Config loaded into memory (Priority: Config File > Env):', PASSWORDS);
@@ -94,8 +96,9 @@ ipcMain.on('VERIFY_PASSWORD', (event, password) => {
   const exitPass = process.env.MADOS_PASS_EXIT || PASSWORDS.exit;
   const eventPass = process.env.MADOS_PASS_EVENT || PASSWORDS.event;
   const adminPass = process.env.MADOS_PASS_ADMIN || PASSWORDS.admin;
+  const setupPass = process.env.MADOS_PASS_SETUP || PASSWORDS.setup;
 
-  console.log('Verifying password:', password, 'against:', { exitPass, eventPass, adminPass });
+  console.log('Verifying password:', password, 'against:', { exitPass, eventPass, adminPass, setupPass });
 
   if (password === exitPass) {
     isAllowExit = true;
@@ -103,6 +106,16 @@ ipcMain.on('VERIFY_PASSWORD', (event, password) => {
   } else if (password === eventPass) {
     event.reply('PASSWORD_ACTION', 'TRIGGER_EVENT');
   } else if (password === adminPass) {
+    event.reply('PASSWORD_ACTION', 'SHOW_SETUP');
+  } else {
+    event.reply('PASSWORD_RESULT', false);
+  }
+});
+
+ipcMain.on('VERIFY_SETUP_PASSWORD', (event, password) => {
+  const setupPass = process.env.MADOS_PASS_SETUP || PASSWORDS.setup;
+  console.log('Verifying setup password:', password, 'against:', setupPass);
+  if (password === setupPass) {
     event.reply('PASSWORD_ACTION', 'SHOW_SETUP');
   } else {
     event.reply('PASSWORD_RESULT', false);
@@ -129,6 +142,7 @@ ipcMain.on('UPDATE_CONFIG', (event, config) => {
         PASSWORDS.exit = config.passwords.exit || PASSWORDS.exit;
         PASSWORDS.event = config.passwords.event || PASSWORDS.event;
         PASSWORDS.admin = config.passwords.admin || PASSWORDS.admin;
+        PASSWORDS.setup = config.passwords.setup || PASSWORDS.setup;
     }
     if (config.kiosk !== undefined) {
         kioskMode = config.kiosk;

@@ -16,7 +16,8 @@ export const Setup: React.FC<SetupProps> = ({ onComplete }) => {
   const [passwords, setPasswords] = useState({
       exit: localStorage.getItem('pass_exit') || 'MADREST104',
       event: localStorage.getItem('pass_event') || 'EVT_TRIGGER_99',
-      admin: localStorage.getItem('pass_admin') || 'ADMIN_DASH'
+      admin: localStorage.getItem('pass_admin') || 'ADMIN_DASH',
+      setup: localStorage.getItem('pass_setup') || 'ADMIN_SETUP'
   });
 
   const testConnection = async () => {
@@ -62,13 +63,19 @@ export const Setup: React.FC<SetupProps> = ({ onComplete }) => {
           localStorage.setItem('pass_exit', passwords.exit);
           localStorage.setItem('pass_event', passwords.event);
           localStorage.setItem('pass_admin', passwords.admin);
+          localStorage.setItem('pass_setup', passwords.setup);
 
           // Clear pairing on fresh setup to force re-approval if IP changed
           localStorage.removeItem('isPaired');
 
           if ((window as any).electron) {
               (window as any).electron.send('UPDATE_CONFIG', {
-                  passwords,
+                  passwords: {
+                      exit: passwords.exit,
+                      event: passwords.event,
+                      admin: passwords.admin,
+                      setup: passwords.setup
+                  },
                   kiosk: kioskEnabled
               });
           }
@@ -179,7 +186,7 @@ export const Setup: React.FC<SetupProps> = ({ onComplete }) => {
                         />
                     </div>
                     <div>
-                        <label className="text-[10px] uppercase tracking-widest text-white/40 ml-2">イベント用</label>
+                        <label className="text-[10px] uppercase tracking-widest text-white/40 ml-2">イベント画面ロック解除用</label>
                         <input
                             type={showPasswords ? "text" : "password"}
                             className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 outline-none focus:border-white/30 transition-all font-mono"
@@ -188,12 +195,21 @@ export const Setup: React.FC<SetupProps> = ({ onComplete }) => {
                         />
                     </div>
                     <div>
-                        <label className="text-[10px] uppercase tracking-widest text-white/40 ml-2">管理者用</label>
+                        <label className="text-[10px] uppercase tracking-widest text-white/40 ml-2">管理者用イベント解除用（電源ボタン用）</label>
                         <input
                             type={showPasswords ? "text" : "password"}
                             className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 outline-none focus:border-white/30 transition-all font-mono"
                             value={passwords.admin}
                             onChange={(e) => setPasswords({...passwords, admin: e.target.value})}
+                        />
+                    </div>
+                    <div>
+                        <label className="text-[10px] uppercase tracking-widest text-white/40 ml-2">管理者ツール起動用（設定画面用）</label>
+                        <input
+                            type={showPasswords ? "text" : "password"}
+                            className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 outline-none focus:border-white/30 transition-all font-mono"
+                            value={passwords.setup}
+                            onChange={(e) => setPasswords({...passwords, setup: e.target.value})}
                         />
                     </div>
                 </div>

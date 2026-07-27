@@ -28,7 +28,9 @@ export type CommandType =
   | 'PUZZLE_RESTART'
   | 'PUZZLE_BROADCAST_VIDEO'
   | 'PUZZLE_RETIRE'
-  | 'PUZZLE_CANCEL_RETIRE';
+  | 'PUZZLE_CANCEL_RETIRE'
+  | 'PUZZLE_PAUSE'
+  | 'PUZZLE_RESUME';
 
 export interface RemoteCommand {
   type: CommandType;

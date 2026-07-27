@@ -61,6 +61,13 @@ const App: React.FC = () => {
 
   // Local synchronized puzzle timer countdown state
   const [puzzleTimer, setPuzzleTimer] = useState<number | null>(null);
+  const [puzzleTimerPaused, setPuzzleTimerPaused] = useState(false);
+
+  const [retiredDeviceIds, setRetiredDeviceIds] = useState<string[]>([]);
+  const retiredDeviceIdsRef = React.useRef<string[]>([]);
+  useEffect(() => {
+    retiredDeviceIdsRef.current = retiredDeviceIds;
+  }, [retiredDeviceIds]);
 
   const [isEmergencyActive, setIsEmergencyActive] = useState(false);
   const isEmergencyActiveRef = React.useRef(false);
@@ -94,10 +101,11 @@ const App: React.FC = () => {
   // Synchronized puzzle countdown timer loop
   useEffect(() => {
     let interval: any;
-    if (puzzleTimer !== null && puzzleTimer > 0) {
+    if (puzzleTimer !== null && puzzleTimer > 0 && !puzzleTimerPaused) {
       interval = setInterval(() => {
         setPuzzleTimer(prev => {
           if (prev === null || prev <= 0) return null;
+          if (puzzleTimerPaused) return prev;
           const next = prev - 1;
 
           // Announce remaining minutes
@@ -142,7 +150,7 @@ const App: React.FC = () => {
       }, 1000);
     }
     return () => clearInterval(interval);
-  }, [puzzleTimer]);
+  }, [puzzleTimer, puzzleTimerPaused]);
 
   useEffect(() => {
     if ((window as any).electron) {
@@ -177,8 +185,15 @@ const App: React.FC = () => {
               });
            }
            setPuzzleTimer(420); // Starts the Master local 7-minute countdown
+           setPuzzleTimerPaused(false);
         } else if (text.includes('EMERGENCY_RETIRE_TRIGGERED')) {
            const devName = getDeviceName(deviceId);
+
+           setRetiredDeviceIds(prev => {
+              if (prev.includes(deviceId)) return prev;
+              return [...prev, deviceId];
+           });
+
            setIsEmergencyActive(true);
            if ((window as any).electron) {
               (window as any).electron.send('SET_EMERGENCY_STATE', { active: true, name: devName });
@@ -188,7 +203,8 @@ const App: React.FC = () => {
 
            if (retireIntervalRef.current) clearInterval(retireIntervalRef.current);
            retireIntervalRef.current = setInterval(() => {
-               speakAnnouncement(`${devName}リタイア`);
+               const names = retiredDeviceIdsRef.current.map(id => getDeviceName(id)).join('と');
+               speakAnnouncement(`${names}リタイア`);
            }, 5000);
         }
       });
@@ -325,21 +341,26 @@ const App: React.FC = () => {
 
   const handlePuzzleStart = () => {
     sendCommand('PUZZLE_START');
-    setPuzzleTimer(null);
-    speakAnnouncement("謎解き準備が完了しました。ゲームを開始してください。");
-    sendDiscordNotification("【システム通知】謎解き準備が完了しました。端末でスタートボタンを押してください。");
+    setPuzzleTimer(420); // Starts counting down 7 minutes (420s) directly
+    setPuzzleTimerPaused(false);
+
+    // Auto trigger connection message for starting the game
     if ((window as any).electron) {
-        (window as any).electron.send('TRIGGER_DISCORD_TTS', {
-            triggerKey: 'PREPARE',
-            fallbackText: '謎解き準備が完了しました。端末のスタートボタンを押してゲームを開始してください。'
-        });
+      (window as any).electron.send('TRIGGER_DISCORD_TTS', {
+         triggerKey: 'START',
+         fallbackText: 'ゲームスタート。ミッションを開始します。制限時間は7分です。'
+      });
     }
+    speakAnnouncement("ミッションを開始します。制限時間は7分です。");
+    sendDiscordNotification("【システム通知】🚀 ゲームスタート！一斉ミッションが開始されました。制限時間7分。");
   };
 
   const handlePuzzleStop = () => {
     sendCommand('PUZZLE_STOP');
     setPuzzleTimer(null);
+    setPuzzleTimerPaused(false);
     setIsEmergencyActive(false);
+    setRetiredDeviceIds([]);
     if ((window as any).electron) {
         (window as any).electron.send('SET_EMERGENCY_STATE', { active: false });
     }
@@ -360,8 +381,10 @@ const App: React.FC = () => {
 
   const handlePuzzleRestart = () => {
     sendCommand('PUZZLE_RESTART');
-    setPuzzleTimer(null);
+    setPuzzleTimer(420); // Restarts countdown to 7 minutes (420s) directly
+    setPuzzleTimerPaused(false);
     setIsEmergencyActive(false);
+    setRetiredDeviceIds([]);
     if ((window as any).electron) {
         (window as any).electron.send('SET_EMERGENCY_STATE', { active: false });
     }
@@ -370,74 +393,98 @@ const App: React.FC = () => {
         retireIntervalRef.current = null;
     }
     window.speechSynthesis.cancel();
-    speakAnnouncement("謎解きシステムが再起動されました。準備完了です。");
-    sendDiscordNotification("【システム通知】謎解きシステムが再起動されました。準備完了です。");
-    if ((window as any).electron) {
-        (window as any).electron.send('TRIGGER_DISCORD_TTS', {
-            triggerKey: 'PREPARE',
-            fallbackText: '謎解き準備が完了しました。端末のスタートボタンを押してゲームを開始してください。'
-        });
-    }
+    speakAnnouncement("謎解きシステムが一斉再起動されました。ミッションを開始します。");
+    sendDiscordNotification("【システム通知】謎解きシステムが一斉再起動されました。");
   };
 
-  const handleCancelRetire = () => {
-    sendCommand('PUZZLE_CANCEL_RETIRE');
-    setIsEmergencyActive(false);
+  const handlePuzzlePause = () => {
+    sendCommand('PUZZLE_PAUSE');
+    setPuzzleTimerPaused(true);
+    speakAnnouncement("ゲームを一時停止します。");
+    sendDiscordNotification("【システム通知】⏸️ ゲームが一時停止されました。");
+  };
+
+  const handlePuzzleResume = () => {
+    sendCommand('PUZZLE_RESUME');
+    setPuzzleTimerPaused(false);
+    speakAnnouncement("ゲームを再開します。");
+    sendDiscordNotification("【システム通知】▶️ ゲームが再開されました。");
+  };
+
+  const handleCancelRetireForDevice = (deviceId: string) => {
     if ((window as any).electron) {
-        (window as any).electron.send('SET_EMERGENCY_STATE', { active: false });
+      (window as any).electron.send('SEND_REMOTE_COMMAND', {
+        targetId: deviceId,
+        command: { type: 'PUZZLE_CANCEL_RETIRE' }
+      });
     }
-    if (retireIntervalRef.current) {
-        clearInterval(retireIntervalRef.current);
-        retireIntervalRef.current = null;
+
+    const remainingRetired = retiredDeviceIds.filter(id => id !== deviceId);
+    setRetiredDeviceIds(remainingRetired);
+
+    if (remainingRetired.length === 0) {
+      setIsEmergencyActive(false);
+      if ((window as any).electron) {
+          (window as any).electron.send('SET_EMERGENCY_STATE', { active: false });
+      }
+      if (retireIntervalRef.current) {
+          clearInterval(retireIntervalRef.current);
+          retireIntervalRef.current = null;
+      }
+    } else {
+       // Update repeating announcement with remaining retired names
+       if (retireIntervalRef.current) clearInterval(retireIntervalRef.current);
+       retireIntervalRef.current = setInterval(() => {
+           const names = remainingRetired.map(id => getDeviceName(id)).join('と');
+           speakAnnouncement(`${names}リタイア`);
+       }, 5000);
     }
+
     window.speechSynthesis.cancel();
-    speakAnnouncement("リタイアが解除されました。");
-    sendDiscordNotification("【システム通知】リタイアが遠隔解除されました。ゲームを継続します。");
-    if ((window as any).electron) {
-        (window as any).electron.send('TRIGGER_DISCORD_TTS', {
-            triggerKey: 'CANCEL_RETIRE',
-            fallbackText: 'リタイアが遠隔解除されました。ゲームを継続します。'
-        });
-    }
+    const devName = getDeviceName(deviceId);
+    speakAnnouncement(`${devName}のリタイアが解除されました。`);
+    sendDiscordNotification(`【システム通知】${devName}のリタイアが遠隔解除されました。`);
   };
-
-  // Scan for any connected device logs indicating emergency retirement
-  const retiredDevice = connectedDevices.find(device => {
-      const logs = connectionLogs[device.id] || [];
-      return logs.some(log => log.includes('EMERGENCY_RETIRE_TRIGGERED'));
-  });
 
   return (
     <div className="min-h-screen bg-[#0d0d0f] text-[#f5f5f7] flex flex-col p-8 gap-8 font-sans overflow-hidden">
       <div className="aura-bg opacity-40" />
 
-      {/* Flashing global emergency notification bar if a child terminal has retired */}
+      {/* Flashing global emergency notification bar if any child terminal has retired */}
       <AnimatePresence>
-          {retiredDevice && (
-              <motion.div
-                initial={{ opacity: 0, y: -20 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -20 }}
-                className="relative z-50 glass-panel p-6 border-red-500/50 bg-red-950/40 flex items-center justify-between"
-              >
-                  <div className="flex items-center gap-4">
-                      <div className="p-3 bg-red-500/20 text-red-500 rounded-xl animate-pulse">
-                          <ShieldAlert size={24} />
-                      </div>
-                      <div>
-                          <div className="text-sm font-black text-red-400 uppercase tracking-widest">⚠️ 緊急リタイア警報検知</div>
-                          <div className="text-xs text-white/60 font-mono mt-1">
-                               端末「{retiredDevice.name || retiredDevice.id}」から緊急リタイア（操作停止）が申請されました。
+          {retiredDeviceIds.length > 0 && (
+              <div className="relative z-50 flex flex-col gap-4">
+                {retiredDeviceIds.map(deviceId => {
+                   const devName = getDeviceName(deviceId);
+                   return (
+                      <motion.div
+                        key={deviceId}
+                        initial={{ opacity: 0, y: -20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -20 }}
+                        className="glass-panel p-6 border-red-500/50 bg-red-950/40 flex items-center justify-between"
+                      >
+                          <div className="flex items-center gap-4">
+                              <div className="p-3 bg-red-500/20 text-red-500 rounded-xl animate-pulse">
+                                  <ShieldAlert size={24} />
+                              </div>
+                              <div>
+                                  <div className="text-sm font-black text-red-400 uppercase tracking-widest">⚠️ 緊急リタイア警報検知</div>
+                                  <div className="text-xs text-white/60 font-mono mt-1">
+                                       端末「{devName}」から緊急リタイア（操作停止）が申請されました。
+                                  </div>
+                              </div>
                           </div>
-                      </div>
-                  </div>
-                  <button
-                    onClick={handleCancelRetire}
-                    className="px-6 py-2.5 bg-red-500 hover:bg-red-600 text-white font-black text-xs uppercase tracking-widest rounded-xl transition-all shadow-[0_0_20px_rgba(239,68,68,0.4)]"
-                  >
-                       遠隔ロック解除を実行
-                  </button>
-              </motion.div>
+                          <button
+                            onClick={() => handleCancelRetireForDevice(deviceId)}
+                            className="px-6 py-2.5 bg-red-500 hover:bg-red-600 text-white font-black text-xs uppercase tracking-widest rounded-xl transition-all shadow-[0_0_20px_rgba(239,68,68,0.4)]"
+                          >
+                               この端末のリタイア解除を実行
+                          </button>
+                      </motion.div>
+                   );
+                })}
+              </div>
           )}
       </AnimatePresence>
 
@@ -848,6 +895,15 @@ const App: React.FC = () => {
                          <div className="w-full h-[1px] bg-white/10 my-4" />
 
                          <div className="grid grid-cols-1 md:grid-cols-4 gap-6 w-full">
+                             {puzzleTimer !== null && (
+                                 <div className="col-span-1 md:col-span-4 p-6 bg-black/40 border border-white/5 rounded-3xl flex flex-col items-center justify-center gap-2">
+                                     <span className="text-[10px] font-black uppercase tracking-widest text-white/40">制限時間カウントダウン</span>
+                                     <span className="text-5xl font-mono font-black tracking-widest text-red-500 tabular-nums animate-pulse">
+                                         {puzzleTimer === 0 ? '制限時間終了' : `${Math.floor(puzzleTimer / 60)}分${puzzleTimer % 60}秒`}
+                                     </span>
+                                 </div>
+                             )}
+
                              <button
                                  onClick={handlePuzzleStart}
                                  className="flex flex-col items-center gap-4 p-6 bg-green-500/10 hover:bg-green-500/20 border border-green-500/30 hover:border-green-500/50 rounded-3xl transition-all group"
@@ -882,36 +938,27 @@ const App: React.FC = () => {
                                      <Zap size={24} />
                                  </div>
                                  <div className="text-center">
-                                     <div className="text-xs font-black text-blue-400 uppercase tracking-widest">再開 / リスタート</div>
+                                     <div className="text-xs font-black text-blue-400 uppercase tracking-widest">一斉再起動</div>
                                      <div className="text-[9px] text-white/40 mt-1 uppercase">Puzzle_Restart</div>
                                  </div>
                              </button>
 
-                             <button
-                                 onClick={() => sendCommand('PUZZLE_BROADCAST_VIDEO')}
-                                 className="flex flex-col items-center gap-4 p-6 bg-purple-500/10 hover:bg-purple-500/20 border border-purple-500/30 hover:border-purple-500/50 rounded-3xl transition-all group"
-                             >
-                                 <div className="p-4 bg-purple-500/20 text-purple-400 rounded-2xl group-hover:scale-110 transition-transform">
-                                     <Video size={24} />
-                                 </div>
-                                 <div className="text-center">
-                                     <div className="text-xs font-black text-purple-400 uppercase tracking-widest">一斉動画再生</div>
-                                     <div className="text-[9px] text-white/40 mt-1 uppercase">Broadcast_Video</div>
-                                 </div>
-                             </button>
-
-                             <button
-                                 onClick={handleCancelRetire}
-                                 className="flex flex-col items-center gap-4 p-6 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 hover:border-red-500/50 rounded-3xl transition-all group col-span-1 md:col-span-4"
-                             >
-                                 <div className="p-4 bg-red-500/20 text-red-400 rounded-2xl group-hover:scale-110 transition-transform animate-pulse">
-                                     <ShieldAlert size={24} />
-                                 </div>
-                                 <div className="text-center">
-                                     <div className="text-xs font-black text-red-400 uppercase tracking-widest">リタイア遠隔解除</div>
-                                     <div className="text-[9px] text-white/40 mt-1 uppercase">Cancel_Retire</div>
-                                 </div>
-                             </button>
+                             {puzzleTimer !== null && puzzleTimer > 0 && (
+                                 <button
+                                     onClick={puzzleTimerPaused ? handlePuzzleResume : handlePuzzlePause}
+                                     className={`flex flex-col items-center gap-4 p-6 rounded-3xl transition-all group ${puzzleTimerPaused ? 'bg-yellow-500/10 border-yellow-500/30 hover:bg-yellow-500/20' : 'bg-orange-500/10 border-orange-500/30 hover:bg-orange-500/20'}`}
+                                 >
+                                     <div className={`p-4 rounded-2xl group-hover:scale-110 transition-transform ${puzzleTimerPaused ? 'bg-yellow-500/20 text-yellow-400' : 'bg-orange-500/20 text-orange-400'}`}>
+                                         {puzzleTimerPaused ? <Play size={24} fill="currentColor" /> : <Power size={24} className="rotate-90" />}
+                                     </div>
+                                     <div className="text-center">
+                                         <div className={`text-xs font-black uppercase tracking-widest ${puzzleTimerPaused ? 'text-yellow-400' : 'text-orange-400'}`}>
+                                             {puzzleTimerPaused ? '再開 (Resume)' : '一時停止 (Pause)'}
+                                         </div>
+                                         <div className="text-[9px] text-white/40 mt-1 uppercase">Puzzle_Control</div>
+                                     </div>
+                                 </button>
+                             )}
                          </div>
                      </div>
                 </div>
