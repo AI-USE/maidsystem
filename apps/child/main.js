@@ -1,18 +1,57 @@
-const { app, BrowserWindow, ipcMain } = require('electron');
+const { app, BrowserWindow, ipcMain, globalShortcut } = require('electron');
 const path = require('path');
 const dgram = require('dgram');
+const fs = require('fs');
+require('dotenv').config({ path: path.join(__dirname, '.env') });
 
 let mainWindow;
 let isAllowExit = false;
-const EXIT_PASSWORD = 'MADREST104';
+let kioskMode = true;
+
+const CONFIG_PATH = path.join(app.getPath('userData'), 'mados_config.json');
+
+let PASSWORDS = {
+  exit: process.env.MADOS_PASS_EXIT || 'MADREST104',
+  event: process.env.MADOS_PASS_EVENT || 'EVT_TRIGGER_99',
+  admin: process.env.MADOS_PASS_ADMIN || 'ADMIN_DASH'
+};
+
+function loadConfig() {
+    try {
+        if (fs.existsSync(CONFIG_PATH)) {
+            const data = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
+
+            // User-configured values in file take precedence over environment variables
+            PASSWORDS.exit = data.passwords?.exit || process.env.MADOS_PASS_EXIT || PASSWORDS.exit;
+            PASSWORDS.event = data.passwords?.event || process.env.MADOS_PASS_EVENT || PASSWORDS.event;
+            PASSWORDS.admin = data.passwords?.admin || process.env.MADOS_PASS_ADMIN || PASSWORDS.admin;
+
+            if (data.kiosk !== undefined) kioskMode = data.kiosk;
+            console.log('Config loaded into memory (Priority: Config File > Env):', PASSWORDS);
+        }
+    } catch (err) {
+        console.error('Failed to load config:', err);
+    }
+}
+
+function saveConfig() {
+    try {
+        const data = { passwords: PASSWORDS, kiosk: kioskMode };
+        fs.writeFileSync(CONFIG_PATH, JSON.stringify(data));
+    } catch (err) {
+        console.error('Failed to save config:', err);
+    }
+}
+
+loadConfig();
 
 function createWindow() {
   mainWindow = new BrowserWindow({
     fullscreen: true,
-    kiosk: true,
+    kiosk: kioskMode,
     alwaysOnTop: true,
     frame: false,
-    backgroundColor: '#000000',
+    backgroundColor: '#0f0f11',
     webPreferences: {
       nodeIntegration: false,
       contextBridge: true,
@@ -21,11 +60,11 @@ function createWindow() {
   });
 
   const isDev = process.env.NODE_ENV === 'development';
-  const startUrl = isDev
-    ? (process.env.VITE_DEV_SERVER_URL || 'http://localhost:5173')
-    : `file://${path.join(__dirname, 'dist/index.html')}`;
-
-  mainWindow.loadURL(startUrl);
+  if (isDev) {
+    mainWindow.loadURL(process.env.VITE_DEV_SERVER_URL || 'http://localhost:5173');
+  } else {
+    mainWindow.loadFile(path.join(__dirname, 'dist/index.html'));
+  }
 
   mainWindow.on('close', (e) => {
     if (!isAllowExit) {
@@ -37,15 +76,69 @@ function createWindow() {
   if (isDev) {
     mainWindow.webContents.openDevTools();
   }
+
+  setupShortcuts();
 }
 
-ipcMain.on('VERIFY_EXIT_PASSWORD', (event, password) => {
-  if (password === EXIT_PASSWORD) {
+function setupShortcuts() {
+    if (kioskMode) {
+        // Disable common escape shortcuts
+        globalShortcut.register('Alt+F4', () => console.log('Shortcut blocked: Alt+F4'));
+        globalShortcut.register('CommandOrControl+W', () => console.log('Shortcut blocked: Ctrl+W'));
+        // We can't easily block Ctrl+Alt+Del from Electron level, but kiosk mode helps on Windows
+    }
+}
+
+ipcMain.on('VERIFY_PASSWORD', (event, password) => {
+  // Re-read env vars just in case they were updated in the environment (unlikely but possible if using a watch tool)
+  const exitPass = process.env.MADOS_PASS_EXIT || PASSWORDS.exit;
+  const eventPass = process.env.MADOS_PASS_EVENT || PASSWORDS.event;
+  const adminPass = process.env.MADOS_PASS_ADMIN || PASSWORDS.admin;
+
+  console.log('Verifying password:', password, 'against:', { exitPass, eventPass, adminPass });
+
+  if (password === exitPass) {
     isAllowExit = true;
     app.quit();
+  } else if (password === eventPass) {
+    event.reply('PASSWORD_ACTION', 'TRIGGER_EVENT');
+  } else if (password === adminPass) {
+    event.reply('PASSWORD_ACTION', 'SHOW_SETUP');
   } else {
-    event.reply('EXIT_PASSWORD_RESULT', false);
+    event.reply('PASSWORD_RESULT', false);
   }
+});
+
+ipcMain.on('SET_KIOSK', (event, enabled) => {
+    kioskMode = enabled;
+    if (mainWindow) {
+        mainWindow.setKiosk(enabled);
+        if (enabled) {
+            setupShortcuts();
+        } else {
+            globalShortcut.unregisterAll();
+        }
+    }
+    saveConfig();
+});
+
+ipcMain.on('UPDATE_CONFIG', (event, config) => {
+    console.log('Updating config in main process:', config);
+    if (config.passwords) {
+        // Explicit UI updates ALWAYS take precedence
+        PASSWORDS.exit = config.passwords.exit || PASSWORDS.exit;
+        PASSWORDS.event = config.passwords.event || PASSWORDS.event;
+        PASSWORDS.admin = config.passwords.admin || PASSWORDS.admin;
+    }
+    if (config.kiosk !== undefined) {
+        kioskMode = config.kiosk;
+        if (mainWindow) {
+            mainWindow.setKiosk(kioskMode);
+            if (kioskMode) setupShortcuts();
+            else globalShortcut.unregisterAll();
+        }
+    }
+    saveConfig();
 });
 
 const udpSocket = dgram.createSocket('udp4');
@@ -58,8 +151,10 @@ ipcMain.on('START_DISCOVERY', (event) => {
   }, 5000);
 
   udpSocket.on('message', (msg, rinfo) => {
-    if (msg.toString() === 'MAD_OS_MASTER_ACK') {
-      const masterUrl = `http://${rinfo.address}:3030`;
+    const data = msg.toString();
+    if (data.startsWith('MAD_OS_MASTER_ACK')) {
+      const port = data.split(':')[1] || '3030';
+      const masterUrl = `http://${rinfo.address}:${port}`;
       event.reply('MASTER_FOUND', masterUrl);
     }
   });
@@ -74,4 +169,8 @@ app.whenReady().then(createWindow);
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
+});
+
+app.on('will-quit', () => {
+    globalShortcut.unregisterAll();
 });

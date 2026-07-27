@@ -12,11 +12,26 @@ export interface OSPlugin {
   id: string;
   title: string;
   icon: React.ReactNode;
-  component: React.ComponentType<{ onClose: () => void }>;
+  component: React.ComponentType<any>;
 }
 
+export type CommandType =
+  | 'SHAKE_SCREEN'
+  | 'LAUNCH_APP'
+  | 'CLOSE_APP'
+  | 'SET_CAMERA'
+  | 'SET_FREEZE'
+  | 'SHOW_ERROR'
+  | 'INJECT_LOG'
+  | 'PUZZLE_START'
+  | 'PUZZLE_STOP'
+  | 'PUZZLE_RESTART'
+  | 'PUZZLE_BROADCAST_VIDEO'
+  | 'PUZZLE_RETIRE'
+  | 'PUZZLE_CANCEL_RETIRE';
+
 export interface RemoteCommand {
-  type: 'SHAKE_SCREEN' | 'LAUNCH_APP' | 'INJECT_TEXT' | 'CLOSE_APP' | 'START_CAMERA' | 'STOP_CAMERA' | 'NOTIFICATION';
+  type: CommandType;
   payload?: any;
 }
 

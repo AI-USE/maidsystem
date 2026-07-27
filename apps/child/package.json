@@ -1,12 +1,32 @@
 {
   "name": "child",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "description": "MAD-OS Child Terminal",
+  "main": "main.js",
   "scripts": {
     "dev": "vite",
+    "app:dev": "concurrently \"vite\" \"wait-on http://localhost:5173 && cross-env NODE_ENV=development electron .\"",
     "build": "vite build",
+    "dist": "npm run build && electron-builder",
     "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "build": {
+    "appId": "com.mad.child",
+    "productName": "MAD-OS-CHILD",
+    "directories": {
+      "output": "../../dist/child"
+    },
+    "files": [
+      "dist/**/*",
+      "main.js",
+      "preload.js",
+      "package.json",
+      "public/**/*"
+    ],
+    "win": {
+      "target": "portable",
+      "requestedExecutionLevel": "requireAdministrator"
+    }
   },
   "keywords": [],
   "author": "",
@@ -21,6 +41,7 @@
   },
   "dependencies": {
     "clsx": "^1.2.1",
+    "dotenv": "^16.6.1",
     "framer-motion": "^10.12.16",
     "lucide-react": "^0.244.0",
     "react": "^18.2.0",
