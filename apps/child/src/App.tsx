@@ -28,6 +28,7 @@ import { Setup } from './components/Setup';
 import { OSContext, OSContextType } from './hooks/useOS';
 import { HiddenCamera } from './components/HiddenCamera';
 import { useRemoteControl } from './hooks/useRemoteControl';
+import maidItemsData from './plugins/maid_items.json';
 
 // Web Audio API Synthesizer for high-fidelity sci-fi SFX and loopable ambient BGM
 const synthContextRef: { current: AudioContext | null } = { current: null };
@@ -189,10 +190,23 @@ const App: React.FC = () => {
   const cam1VideoRef = useRef<HTMLVideoElement>(null);
   const cam2VideoRef = useRef<HTMLVideoElement>(null);
 
-  // Maid controls state mock
-  const [maidActive, setMaidActive] = useState(true);
-  const [tempVal, setTempVal] = useState(21.4);
-  const [entranceLocked, setEntranceLocked] = useState(true);
+  // Maid controls state
+  const [maidRoomInput, setMaidRoomInput] = useState('');
+  const [maidItemInput, setMaidItemInput] = useState('');
+  const [maidDeliveryState, setMaidDeliveryState] = useState<'idle' | 'testing' | 'delivering' | 'error'>('idle');
+  const [maidDeliveryError, setMaidDeliveryError] = useState('');
+  const [maidTimer, setMaidTimer] = useState(0);
+  const [deliveredItemCodes, setDeliveredItems] = useState<string[]>([]);
+
+  useEffect(() => {
+    let interval: any;
+    if (maidTimer > 0) {
+      interval = setInterval(() => {
+        setMaidTimer(prev => prev - 1);
+      }, 1000);
+    }
+    return () => clearInterval(interval);
+  }, [maidTimer]);
 
   // Execution stop state mock (Only allowed <= 20s, exactly 1 attempt)
   const [executionOverrideInput, setExecutionOverrideInput] = useState('');
@@ -241,7 +255,6 @@ const App: React.FC = () => {
   useEffect(() => {
     const handleGlobalClick = () => {
          const shouldPlayBgm =
-           puzzleState !== 'idle' &&
            puzzleState !== 'retired' &&
            !videoPlaying &&
            !isPaused &&
@@ -270,7 +283,6 @@ const App: React.FC = () => {
   // Automatic background music (BGM) playback lifecycle control
   useEffect(() => {
     const shouldPlayBgm =
-      puzzleState !== 'idle' &&
       puzzleState !== 'retired' &&
       !videoPlaying &&
       !isPaused &&
@@ -518,6 +530,19 @@ const App: React.FC = () => {
         setIsPaused(false);
         break;
       }
+      case 'MAID_DELIVERY_CLEARED': {
+        const clearedItemCode = cmd.payload?.itemCode;
+        if (clearedItemCode) {
+          setDeliveredItems(prev => {
+            if (prev.includes(clearedItemCode)) return prev;
+            return [...prev, clearedItemCode];
+          });
+        }
+        setMaidDeliveryState('idle');
+        setMaidRoomInput('');
+        setMaidItemInput('');
+        break;
+      }
       case 'PUZZLE_STOP':
         setPuzzleState('idle');
         setTimeOverride(null);
@@ -606,6 +631,33 @@ const App: React.FC = () => {
     } else {
       setPowerError(true);
     }
+  };
+
+  const handleMaidDeliver = () => {
+     if (maidTimer > 0) return;
+
+     if (deliveredItemCodes.includes(maidItemInput)) {
+         setMaidDeliveryError("その物品は公演のなかでは存在しません");
+         setMaidDeliveryState('error');
+         return;
+     }
+
+     setMaidDeliveryState('testing');
+
+     setTimeout(() => {
+         const matched = maidItemsData.find(entry => entry.roomCode === maidRoomInput && entry.itemCode === maidItemInput);
+
+         if (matched) {
+             setMaidDeliveryState('delivering');
+             emit('CONNECTION_MSG', {
+                 text: `MAID_DELIVERY_REQUEST: Room: "${maidRoomInput}", Item: "${maidItemInput}", ItemName: "${matched.name}"`
+             });
+         } else {
+             setMaidDeliveryError("存在しません");
+             setMaidDeliveryState('error');
+             setMaidTimer(5);
+         }
+     }, 3000);
   };
 
   const handleVerifyExecutionOverride = () => {
@@ -1153,43 +1205,73 @@ const App: React.FC = () => {
 
                                   {/* Mock Maid Control System App */}
                                   {openAppId === 'maid' && (
-                                      <div className="max-w-4xl mx-auto space-y-8 py-6 font-mono">
-                                           <div className="grid grid-cols-3 gap-6">
-                                                <div className="glass-panel p-6 border-white/10 bg-white/5 rounded-2xl">
-                                                     <div className="text-xs text-white/40 uppercase mb-2">メイド稼働状況</div>
-                                                     <div className={`text-2xl font-black ${maidActive ? 'text-green-400' : 'text-red-500'}`}>
-                                                          {maidActive ? '通常運転 (ACTIVE)' : '緊急停止中'}
-                                                     </div>
-                                                     <button
-                                                       onClick={() => setMaidActive(!maidActive)}
-                                                       className="mt-6 w-full py-2.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-bold uppercase tracking-wider transition-colors"
-                                                     >
-                                                          トグル切り替え
-                                                     </button>
+                                      <div className="max-w-md mx-auto space-y-6 py-6 font-mono text-center">
+                                           <div className="w-16 h-16 bg-red-950/40 rounded-[20px] flex items-center justify-center mx-auto border border-red-500/20 animate-pulse">
+                                               <Cpu className="text-red-500" size={32} />
+                                           </div>
+                                           <div>
+                                                <h4 className="text-sm font-bold uppercase tracking-widest text-white">メイド配達コントロールシステム</h4>
+                                                <p className="text-[10px] text-white/40 mt-1 uppercase">配達を要請する物品情報と部屋コードを入力してください。</p>
+                                           </div>
+
+                                           <div className="space-y-4 text-left">
+                                                <div>
+                                                     <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest block mb-1">物品がある部屋コード</label>
+                                                     <input
+                                                          type="text"
+                                                          disabled={maidDeliveryState === 'testing' || maidDeliveryState === 'delivering' || maidTimer > 0}
+                                                          placeholder="例: RM101"
+                                                          className="w-full bg-black/60 border border-white/10 rounded-xl px-4 py-3 text-sm font-mono text-white outline-none focus:border-red-900 transition-colors uppercase"
+                                                          value={maidRoomInput}
+                                                          onChange={(e) => setMaidRoomInput(e.target.value.toUpperCase())}
+                                                     />
                                                 </div>
 
-                                                <div className="glass-panel p-6 border-white/10 bg-white/5 rounded-2xl">
-                                                     <div className="text-xs text-white/40 uppercase mb-2">隔壁エリア温度</div>
-                                                     <div className="text-2xl font-black text-white">{tempVal.toFixed(1)}°C</div>
-                                                     <div className="flex gap-4 mt-6">
-                                                          <button onClick={() => setTempVal(prev => prev - 0.5)} className="flex-1 py-2.5 bg-white/5 border border-white/10 rounded-xl text-sm hover:bg-white/10 transition-colors">-</button>
-                                                          <button onClick={() => setTempVal(prev => prev + 0.5)} className="flex-1 py-2.5 bg-white/5 border border-white/10 rounded-xl text-sm hover:bg-white/10 transition-colors">+</button>
-                                                     </div>
-                                                </div>
-
-                                                <div className="glass-panel p-6 border-white/10 bg-white/5 rounded-2xl">
-                                                     <div className="text-xs text-white/40 uppercase mb-2">エントランスゲート</div>
-                                                     <div className={`text-2xl font-black ${entranceLocked ? 'text-red-500' : 'text-green-400'}`}>
-                                                          {entranceLocked ? 'ロック中 (LOCKED)' : '開放 (UNLOCKED)'}
-                                                     </div>
-                                                     <button
-                                                       onClick={() => setEntranceLocked(!entranceLocked)}
-                                                       className="mt-6 w-full py-2.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-bold uppercase tracking-wider transition-colors"
-                                                     >
-                                                          ロック切替
-                                                     </button>
+                                                <div>
+                                                     <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest block mb-1">物品コード</label>
+                                                     <input
+                                                          type="text"
+                                                          disabled={maidDeliveryState === 'testing' || maidDeliveryState === 'delivering' || maidTimer > 0}
+                                                          placeholder="例: ITEM01"
+                                                          className="w-full bg-black/60 border border-white/10 rounded-xl px-4 py-3 text-sm font-mono text-white outline-none focus:border-red-900 transition-colors uppercase"
+                                                          value={maidItemInput}
+                                                          onChange={(e) => setMaidItemInput(e.target.value.toUpperCase())}
+                                                     />
                                                 </div>
                                            </div>
+
+                                           {maidDeliveryState === 'testing' && (
+                                                <div className="p-4 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center gap-2">
+                                                     <Loader2 size={16} className="text-white/60 animate-spin" />
+                                                     <span className="text-xs text-white/60">データ照合中（3秒待機）...</span>
+                                                </div>
+                                           )}
+
+                                           {maidDeliveryState === 'delivering' && (
+                                                <div className="p-4 rounded-xl bg-green-950/20 border border-green-900/30 flex items-center justify-center gap-2">
+                                                     <div className="w-1.5 h-1.5 rounded-full bg-green-400 animate-ping" />
+                                                     <span className="text-xs text-green-400 font-bold uppercase tracking-widest">現在、メイドが物品を配達中です。</span>
+                                                </div>
+                                           )}
+
+                                           {maidDeliveryState === 'error' && (
+                                                <div className="p-4 rounded-xl bg-red-950/20 border border-red-900/30 flex flex-col gap-1 items-center justify-center text-red-400">
+                                                     <AlertCircle size={20} />
+                                                     <span className="text-xs font-bold uppercase tracking-widest">エラー: {maidDeliveryError}</span>
+                                                </div>
+                                           )}
+
+                                           <button
+                                                disabled={!maidRoomInput || !maidItemInput || maidDeliveryState === 'testing' || maidDeliveryState === 'delivering' || maidTimer > 0}
+                                                onClick={handleMaidDeliver}
+                                                className={`w-full py-3.5 rounded-xl font-bold uppercase text-[10px] tracking-widest transition-colors ${
+                                                    (!maidRoomInput || !maidItemInput || maidDeliveryState === 'testing' || maidDeliveryState === 'delivering' || maidTimer > 0)
+                                                    ? 'bg-white/5 border border-white/5 text-white/20 cursor-not-allowed'
+                                                    : 'bg-red-950/40 hover:bg-red-950/60 border border-red-900/40 text-red-400'
+                                                }`}
+                                           >
+                                                {maidTimer > 0 ? `入力制限中: あと ${maidTimer} 秒` : '配達を要請'}
+                                           </button>
                                       </div>
                                   )}
 

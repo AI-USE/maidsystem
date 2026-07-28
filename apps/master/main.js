@@ -8,6 +8,7 @@ const dgram = require('dgram');
 let mainWindow;
 const devices = new Map(); // Indexed by persistent deviceId
 const socketMap = new Map(); // socket.id -> deviceId
+const activeDeliveries = new Map(); // itemCode -> { deviceId, roomCode, itemCode, itemName, intervalId, socketId }
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -139,6 +140,50 @@ io.on('connection', (socket) => {
             text: data.text
         });
     }
+
+    if (data.text && data.text.includes('MAID_DELIVERY_REQUEST:')) {
+        try {
+            const roomMatch = data.text.match(/Room:\s*"([^"]+)"/);
+            const itemMatch = data.text.match(/Item:\s*"([^"]+)"/);
+            const nameMatch = data.text.match(/ItemName:\s*"([^"]+)"/);
+
+            const roomCode = roomMatch ? roomMatch[1] : '';
+            const itemCode = itemMatch ? itemMatch[1] : '';
+            const itemName = nameMatch ? nameMatch[1] : '';
+
+            if (activeDeliveries.has(itemCode)) {
+                clearInterval(activeDeliveries.get(itemCode).intervalId);
+            }
+
+            const announceText = `配達要請、部屋${roomCode}、物品${itemName}。`;
+            playDiscordTts(announceText);
+
+            const intervalId = setInterval(() => {
+                console.log(`Looping delivery request for item: ${itemCode}`);
+                playDiscordTts(announceText);
+            }, 8000);
+
+            activeDeliveries.set(itemCode, {
+                deviceId: pDeviceId,
+                roomCode,
+                itemCode,
+                itemName,
+                intervalId,
+                socketId: sid
+            });
+
+            if (mainWindow) {
+                mainWindow.webContents.send('MAID_DELIVERY_ACTIVE', {
+                    deviceId: pDeviceId,
+                    roomCode,
+                    itemCode,
+                    itemName
+                });
+            }
+        } catch (e) {
+            console.error('Error parsing delivery request:', e);
+        }
+    }
   });
 
   socket.on('HEARTBEAT', (data) => {
@@ -197,7 +242,52 @@ ipcMain.on('REMOVE_DEVICE', (event, deviceId) => {
     }
 });
 
+ipcMain.on('CLEAR_MAID_DELIVERY', (event, { itemCode }) => {
+    console.log(`CLEAR_MAID_DELIVERY received for item: ${itemCode}`);
+    if (activeDeliveries.has(itemCode)) {
+        const delivery = activeDeliveries.get(itemCode);
+        clearInterval(delivery.intervalId);
+
+        // Notify Discord Voice bot
+        playDiscordTts(`物品${delivery.itemName}、配備完了しました。`);
+
+        // Notify connected Child terminal that this item is cleared
+        io.to(delivery.socketId).emit('ADMIN_REMOTE_CTRL', {
+            type: 'MAID_DELIVERY_CLEARED',
+            payload: { itemCode }
+        });
+
+        activeDeliveries.delete(itemCode);
+
+        // Notify master renderer to update lists
+        if (mainWindow) {
+            mainWindow.webContents.send('MAID_DELIVERY_CLEARED_SUCCESS', { itemCode });
+        }
+    }
+});
+
+ipcMain.on('CLEAR_ALL_MAID_DELIVERIES', (event) => {
+    for (const [itemCode, delivery] of activeDeliveries.entries()) {
+        clearInterval(delivery.intervalId);
+    }
+    activeDeliveries.clear();
+    if (mainWindow) {
+        mainWindow.webContents.send('MAID_DELIVERY_RESET');
+    }
+});
+
 ipcMain.on('SEND_REMOTE_COMMAND', (event, { targetId, command }) => {
+  if (command.type === 'PUZZLE_STOP' || command.type === 'PUZZLE_RESTART') {
+    // Clean all deliveries
+    for (const [itemCode, delivery] of activeDeliveries.entries()) {
+        clearInterval(delivery.intervalId);
+    }
+    activeDeliveries.clear();
+    if (mainWindow) {
+        mainWindow.webContents.send('MAID_DELIVERY_RESET');
+    }
+  }
+
   if (targetId === 'all') {
     io.emit('ADMIN_REMOTE_CTRL', command);
   } else {

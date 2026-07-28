@@ -30,7 +30,8 @@ export type CommandType =
   | 'PUZZLE_RETIRE'
   | 'PUZZLE_CANCEL_RETIRE'
   | 'PUZZLE_PAUSE'
-  | 'PUZZLE_RESUME';
+  | 'PUZZLE_RESUME'
+  | 'MAID_DELIVERY_CLEARED';
 
 export interface RemoteCommand {
   type: CommandType;

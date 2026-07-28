@@ -69,6 +69,34 @@ const App: React.FC = () => {
     retiredDeviceIdsRef.current = retiredDeviceIds;
   }, [retiredDeviceIds]);
 
+  // Maid Delivery States
+  const [activeDeliveries, setActiveDeliveries] = useState<any[]>([]);
+
+  useEffect(() => {
+    if ((window as any).electron) {
+      (window as any).electron.on('MAID_DELIVERY_ACTIVE', (data: any) => {
+          setActiveDeliveries(prev => {
+              if (prev.some(d => d.itemCode === data.itemCode)) return prev;
+              return [...prev, data];
+          });
+      });
+
+      (window as any).electron.on('MAID_DELIVERY_CLEARED_SUCCESS', ({ itemCode }: any) => {
+          setActiveDeliveries(prev => prev.filter(d => d.itemCode !== itemCode));
+      });
+
+      (window as any).electron.on('MAID_DELIVERY_RESET', () => {
+          setActiveDeliveries([]);
+      });
+    }
+  }, []);
+
+  const handleClearMaidDelivery = (itemCode: string) => {
+      if ((window as any).electron) {
+          (window as any).electron.send('CLEAR_MAID_DELIVERY', { itemCode });
+      }
+  };
+
   const [isEmergencyActive, setIsEmergencyActive] = useState(false);
   const isEmergencyActiveRef = React.useRef(false);
 
@@ -480,6 +508,44 @@ const App: React.FC = () => {
                             className="px-6 py-2.5 bg-red-500 hover:bg-red-600 text-white font-black text-xs uppercase tracking-widest rounded-xl transition-all shadow-[0_0_20px_rgba(239,68,68,0.4)]"
                           >
                                この端末のリタイア解除を実行
+                          </button>
+                      </motion.div>
+                   );
+                })}
+              </div>
+          )}
+      </AnimatePresence>
+
+      {/* Active Maid Delivery Requests Notification Bar */}
+      <AnimatePresence>
+          {activeDeliveries.length > 0 && (
+              <div className="relative z-50 flex flex-col gap-4">
+                {activeDeliveries.map(delivery => {
+                   const devName = getDeviceName(delivery.deviceId);
+                   return (
+                      <motion.div
+                        key={delivery.itemCode}
+                        initial={{ opacity: 0, y: -20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -20 }}
+                        className="glass-panel p-6 border-green-500/50 bg-green-950/20 flex items-center justify-between"
+                      >
+                          <div className="flex items-center gap-4">
+                              <div className="p-3 bg-green-500/20 text-green-400 rounded-xl animate-bounce">
+                                  <Zap size={24} />
+                              </div>
+                              <div>
+                                  <div className="text-sm font-black text-green-400 uppercase tracking-widest">🛎️ メイド配達要請検知</div>
+                                  <div className="text-xs text-white/80 font-mono mt-1">
+                                       端末「{devName}」：部屋 <span className="text-green-400 font-bold">{delivery.roomCode}</span> より物品 <span className="text-green-400 font-bold">"{delivery.itemName}"（コード: {delivery.itemCode}）</span> の配達要請を受けました。
+                                  </div>
+                              </div>
+                          </div>
+                          <button
+                            onClick={() => handleClearMaidDelivery(delivery.itemCode)}
+                            className="px-6 py-2.5 bg-green-500 hover:bg-green-600 text-white font-black text-xs uppercase tracking-widest rounded-xl transition-all shadow-[0_0_20px_rgba(34,197,94,0.4)]"
+                          >
+                               配備完了（要請をクリア）
                           </button>
                       </motion.div>
                    );
