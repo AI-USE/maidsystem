@@ -71,6 +71,7 @@ const App: React.FC = () => {
 
   // Maid Delivery States
   const [activeDeliveries, setActiveDeliveries] = useState<any[]>([]);
+  const [resultsVideoSent, setResultsVideoSent] = useState(false);
 
   useEffect(() => {
     if ((window as any).electron) {
@@ -161,15 +162,33 @@ const App: React.FC = () => {
           }
           // Announce termination
           else if (next === 0) {
-            const text = "終了。ゲームシステムが停止されました。";
+            const correctList = ["OVERRIDE_SUCCESS", "EXEC_STOP_99"];
+            const closeList = ["OVERRIDE_CLOSE", "EXEC_STOP_98"];
+
+            const successNames = connectedDevicesRef.current
+              .filter(d => d.submittedPasscode && correctList.some(p => p.toUpperCase() === d.submittedPasscode.trim().toUpperCase()))
+              .map(d => d.name || `端末_${d.id.substring(0,6)}`);
+
+            const closeNames = connectedDevicesRef.current
+              .filter(d => d.submittedPasscode && closeList.some(p => p.toUpperCase() === d.submittedPasscode.trim().toUpperCase()))
+              .map(d => d.name || `端末_${d.id.substring(0,6)}`);
+
+            const successStr = successNames.length > 0 ? successNames.join('と') : 'なし';
+            const closeStr = closeNames.length > 0 ? closeNames.join('と') : 'なし';
+
+            const text = `終了。ゲームシステムが停止されました。結果を発表します。成功者、${successStr}。惜敗者、${closeStr}。`;
             speakAnnouncement(text);
             sendDiscordNotification(`【システムタイマー】🛑 ${text}`);
+
             if ((window as any).electron) {
               (window as any).electron.send('TRIGGER_DISCORD_TTS', {
                 triggerKey: 'FINISH',
                 fallbackText: '制限時間終了。ゲームオーバーです。システムを強制停止します。'
               });
-              (window as any).electron.send('START_RESULTS_LOOP');
+              (window as any).electron.send('START_POST_GAME_ANNOUNCEMENTS', {
+                successStr,
+                closeStr
+              });
             }
             return null;
           }
@@ -184,6 +203,7 @@ const App: React.FC = () => {
   useEffect(() => {
     if ((window as any).electron) {
       (window as any).electron.send('GET_LOCAL_IP');
+      (window as any).electron.send('START_STANDBY_LOOP');
       (window as any).electron.on('LOCAL_IP_RESULT', ({ ip, port }: { ip: string, port: number }) => {
           setLocalIp(ip);
           setLocalPort(port);
@@ -390,6 +410,7 @@ const App: React.FC = () => {
     setPuzzleTimerPaused(false);
     setIsEmergencyActive(false);
     setRetiredDeviceIds([]);
+    setResultsVideoSent(false); // Reset results video gate
     if ((window as any).electron) {
         (window as any).electron.send('SET_EMERGENCY_STATE', { active: false });
         (window as any).electron.send('STOP_RESULTS_LOOP');
@@ -415,6 +436,7 @@ const App: React.FC = () => {
     setPuzzleTimerPaused(false);
     setIsEmergencyActive(false);
     setRetiredDeviceIds([]);
+    setResultsVideoSent(false); // Reset results video gate
     if ((window as any).electron) {
         (window as any).electron.send('SET_EMERGENCY_STATE', { active: false });
         (window as any).electron.send('STOP_RESULTS_LOOP');
@@ -1007,6 +1029,7 @@ const App: React.FC = () => {
                              </button>
 
                              <button
+                                 disabled={puzzleTimer === null}
                                  onClick={() => {
                                      if (confirm("警告: 公演をストップ（中断）しますか？")) {
                                          if (confirm("本当に中断しますか？この操作は取り消せません。")) {
@@ -1014,7 +1037,7 @@ const App: React.FC = () => {
                                          }
                                      }
                                  }}
-                                 className="flex flex-col items-center gap-4 p-6 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 hover:border-red-500/50 rounded-3xl transition-all group"
+                                 className={`flex flex-col items-center gap-4 p-6 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 hover:border-red-500/50 rounded-3xl transition-all group ${puzzleTimer === null ? 'opacity-30 cursor-not-allowed' : ''}`}
                              >
                                  <div className="p-4 bg-red-500/20 text-red-400 rounded-2xl group-hover:scale-110 transition-transform">
                                      <Power size={24} />
@@ -1026,6 +1049,7 @@ const App: React.FC = () => {
                              </button>
 
                              <button
+                                 disabled={puzzleTimer === null}
                                  onClick={() => {
                                      if (confirm("警告: 公演を一斉再起動しますか？")) {
                                          if (confirm("本当に再起動しますか？タイマーが7分にリセットされます。")) {
@@ -1033,7 +1057,7 @@ const App: React.FC = () => {
                                          }
                                      }
                                  }}
-                                 className="flex flex-col items-center gap-4 p-6 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/30 hover:border-blue-500/50 rounded-3xl transition-all group"
+                                 className={`flex flex-col items-center gap-4 p-6 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/30 hover:border-blue-500/50 rounded-3xl transition-all group ${puzzleTimer === null ? 'opacity-30 cursor-not-allowed' : ''}`}
                              >
                                  <div className="p-4 bg-blue-500/20 text-blue-400 rounded-2xl group-hover:scale-110 transition-transform">
                                      <Zap size={24} />
@@ -1068,48 +1092,58 @@ const App: React.FC = () => {
                              <h3 className="text-xs font-bold text-white/40 uppercase tracking-widest pl-2">公演結果発表 & 解説ビデオ制御</h3>
                              <div className="grid grid-cols-4 gap-4 w-full">
                                  <button
+                                     disabled={puzzleTimer !== 0}
                                      onClick={() => {
                                          if (confirm("全子機で一斉に【正解動画】を再生しますか？")) {
                                              sendCommand('PUZZLE_RESULT_CORRECT');
+                                             setResultsVideoSent(true);
                                          }
                                      }}
-                                     className="flex flex-col items-center gap-3 p-4 bg-green-500/5 hover:bg-green-500/10 border border-green-500/20 rounded-2xl transition-all"
+                                     className={`flex flex-col items-center gap-3 p-4 bg-green-500/5 hover:bg-green-500/10 border border-green-500/20 rounded-2xl transition-all ${puzzleTimer !== 0 ? 'opacity-30 cursor-not-allowed' : ''}`}
                                  >
                                      <Play size={18} className="text-green-400" />
                                      <span className="text-[10px] font-black text-green-400 uppercase tracking-wider">正解動画を流す</span>
                                  </button>
 
                                  <button
+                                     disabled={puzzleTimer !== 0}
                                      onClick={() => {
                                          if (confirm("全子機で一斉に【おしかった動画】を再生しますか？")) {
                                              sendCommand('PUZZLE_RESULT_CLOSE');
+                                             setResultsVideoSent(true);
                                          }
                                      }}
-                                     className="flex flex-col items-center gap-3 p-4 bg-yellow-500/5 hover:bg-yellow-500/10 border border-yellow-500/20 rounded-2xl transition-all"
+                                     className={`flex flex-col items-center gap-3 p-4 bg-yellow-500/5 hover:bg-yellow-500/10 border border-yellow-500/20 rounded-2xl transition-all ${puzzleTimer !== 0 ? 'opacity-30 cursor-not-allowed' : ''}`}
                                  >
                                      <Play size={18} className="text-yellow-400" />
                                      <span className="text-[10px] font-black text-yellow-400 uppercase tracking-wider">おしかった動画を流す</span>
                                  </button>
 
                                  <button
+                                     disabled={puzzleTimer !== 0}
                                      onClick={() => {
                                          if (confirm("全子機で一斉に【失敗動画】を再生しますか？")) {
                                              sendCommand('PUZZLE_RESULT_FAILED');
+                                             setResultsVideoSent(true);
                                          }
                                      }}
-                                     className="flex flex-col items-center gap-3 p-4 bg-red-500/5 hover:bg-red-500/10 border border-red-500/20 rounded-2xl transition-all"
+                                     className={`flex flex-col items-center gap-3 p-4 bg-red-500/5 hover:bg-red-500/10 border border-red-500/20 rounded-2xl transition-all ${puzzleTimer !== 0 ? 'opacity-30 cursor-not-allowed' : ''}`}
                                  >
                                      <Play size={18} className="text-red-400" />
                                      <span className="text-[10px] font-black text-red-400 uppercase tracking-wider">失敗動画を流す</span>
                                  </button>
 
                                  <button
+                                     disabled={!resultsVideoSent}
                                      onClick={() => {
                                          if (confirm("全子機で一斉に【解説動画】を再生しますか？")) {
                                              sendCommand('PUZZLE_RESULT_COMMENTARY');
+                                             if ((window as any).electron) {
+                                                (window as any).electron.send('PLAY_COMMENTARY_END');
+                                             }
                                          }
                                      }}
-                                     className="flex flex-col items-center gap-3 p-4 bg-purple-500/5 hover:bg-purple-500/10 border border-purple-500/20 rounded-2xl transition-all"
+                                     className={`flex flex-col items-center gap-3 p-4 bg-purple-500/5 hover:bg-purple-500/10 border border-purple-500/20 rounded-2xl transition-all ${!resultsVideoSent ? 'opacity-30 cursor-not-allowed' : ''}`}
                                  >
                                      <Play size={18} className="text-purple-400" />
                                      <span className="text-[10px] font-black text-purple-400 uppercase tracking-wider">解説動画を流す</span>

@@ -168,7 +168,8 @@ io.on('connection', (socket) => {
                 clearInterval(activeDeliveries.get(itemCode).intervalId);
             }
 
-            const announceText = `配達要請、部屋${roomCode}、物品${itemName}。`;
+            const devName = (pDeviceId && devices.has(pDeviceId)) ? (devices.get(pDeviceId).name || `端末_${pDeviceId.substring(0,6)}`) : '子機';
+            const announceText = `部屋名${devName}、アイテム${itemName}、配達要請。`;
             playDiscordTts(announceText);
 
             const intervalId = setInterval(() => {
@@ -297,6 +298,12 @@ ipcMain.on('SEND_REMOTE_COMMAND', (event, { targetId, command }) => {
     }
     activeDeliveries.clear();
 
+    // Clean post game loops
+    if (postGameInterval) {
+        clearInterval(postGameInterval);
+        postGameInterval = null;
+    }
+
     // Reset all submitted passcodes
     for (const d of devices.values()) {
         d.submittedPasscode = undefined;
@@ -306,6 +313,21 @@ ipcMain.on('SEND_REMOTE_COMMAND', (event, { targetId, command }) => {
     if (mainWindow) {
         mainWindow.webContents.send('MAID_DELIVERY_RESET');
     }
+  }
+
+  if (command.type === 'PUZZLE_START' || command.type === 'PUZZLE_RESTART') {
+      if (standbyLoopInterval) {
+          clearInterval(standbyLoopInterval);
+          standbyLoopInterval = null;
+      }
+  }
+
+  if (command.type === 'PUZZLE_STOP') {
+      if (standbyLoopInterval) clearInterval(standbyLoopInterval);
+      playDiscordTts("謎解きの公演準備完了");
+      standbyLoopInterval = setInterval(() => {
+          playDiscordTts("謎解きの公演準備完了");
+      }, 5000);
   }
 
   if (targetId === 'all') {
@@ -593,5 +615,65 @@ ipcMain.on('STOP_RESULTS_LOOP', (event) => {
     if (resultsLoopInterval) {
         clearInterval(resultsLoopInterval);
         resultsLoopInterval = null;
+    }
+});
+
+let standbyLoopInterval = null;
+
+ipcMain.on('START_STANDBY_LOOP', (event) => {
+    console.log('START_STANDBY_LOOP received.');
+    if (standbyLoopInterval) clearInterval(standbyLoopInterval);
+
+    playDiscordTts("謎解きの公演準備完了");
+    standbyLoopInterval = setInterval(() => {
+        playDiscordTts("謎解きの公演準備完了");
+    }, 5000);
+});
+
+ipcMain.on('STOP_STANDBY_LOOP', (event) => {
+    console.log('STOP_STANDBY_LOOP received.');
+    if (standbyLoopInterval) {
+        clearInterval(standbyLoopInterval);
+        standbyLoopInterval = null;
+    }
+});
+
+ipcMain.on('PLAY_COMMENTARY_END', (event) => {
+    console.log('PLAY_COMMENTARY_END received.');
+    playDiscordTts("解説終了");
+});
+
+let postGameInterval = null;
+
+ipcMain.on('START_POST_GAME_ANNOUNCEMENTS', (event, { successStr, closeStr }) => {
+    console.log('START_POST_GAME_ANNOUNCEMENTS received.', successStr, closeStr);
+    if (resultsLoopInterval) {
+        clearInterval(resultsLoopInterval);
+        resultsLoopInterval = null;
+    }
+    if (postGameInterval) {
+        clearInterval(postGameInterval);
+    }
+
+    const introText = `これより結果を発表します。成功者、${successStr}。惜敗者、${closeStr}。`;
+    playDiscordTts(introText);
+    setTimeout(() => {
+        playDiscordTts(introText);
+    }, 8000);
+
+    const loopEgressText = `成功者、${successStr}。惜敗者、${closeStr}。退室の案内をしてください。`;
+    setTimeout(() => {
+        playDiscordTts(loopEgressText);
+        postGameInterval = setInterval(() => {
+            playDiscordTts(loopEgressText);
+        }, 12000);
+    }, 18000);
+});
+
+ipcMain.on('STOP_POST_GAME_ANNOUNCEMENTS', (event) => {
+    console.log('STOP_POST_GAME_ANNOUNCEMENTS received.');
+    if (postGameInterval) {
+        clearInterval(postGameInterval);
+        postGameInterval = null;
     }
 });

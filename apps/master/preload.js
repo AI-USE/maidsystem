@@ -14,7 +14,12 @@ contextBridge.exposeInMainWorld('electron', {
       'CLEAR_MAID_DELIVERY',
       'CLEAR_ALL_MAID_DELIVERIES',
       'START_RESULTS_LOOP',
-      'STOP_RESULTS_LOOP'
+      'STOP_RESULTS_LOOP',
+      'START_STANDBY_LOOP',
+      'STOP_STANDBY_LOOP',
+      'PLAY_COMMENTARY_END',
+      'START_POST_GAME_ANNOUNCEMENTS',
+      'STOP_POST_GAME_ANNOUNCEMENTS'
     ];
     if (validChannels.includes(channel)) {
       ipcRenderer.send(channel, data);

@@ -290,6 +290,50 @@ const App: React.FC = () => {
 
   // Automatic background music (BGM) playback lifecycle control
   useEffect(() => {
+    if (postCommentaryScreen !== 'none') {
+      if (bgmAudioRef.current) {
+          bgmAudioRef.current.pause();
+      }
+      if (bgmOscillatorRef.current) {
+          try { bgmOscillatorRef.current.stop(); } catch(e){}
+          bgmOscillatorRef.current = null;
+      }
+
+      const playExitBgm = () => {
+         const volumeValue = parseFloat(localStorage.getItem('bgmVolume') || '50') / 100;
+         const audio = new Audio('bgm_exit.mp3');
+         audio.loop = true;
+         audio.volume = volumeValue;
+         bgmAudioRef.current = audio;
+         audio.play().catch(err => {
+             console.warn("Could not play bgm_exit.mp3, falling back to synthesized exit drone:", err);
+             bgmAudioRef.current = null;
+             try {
+                 if (!synthContextRef.current) {
+                     synthContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+                 }
+                 const ctx = synthContextRef.current;
+                 const osc1 = ctx.createOscillator();
+                 const osc2 = ctx.createOscillator();
+                 const gain = ctx.createGain();
+                 osc1.type = 'sine';
+                 osc1.frequency.setValueAtTime(130.81, ctx.currentTime); // C3
+                 osc2.type = 'sine';
+                 osc2.frequency.setValueAtTime(164.81, ctx.currentTime); // E3
+                 gain.gain.setValueAtTime(0.25 * volumeValue, ctx.currentTime);
+                 osc1.connect(gain);
+                 osc2.connect(gain);
+                 gain.connect(ctx.destination);
+                 osc1.start();
+                 osc2.start();
+                 bgmOscillatorRef.current = osc1;
+             } catch(e){}
+         });
+      };
+      playExitBgm();
+      return;
+    }
+
     const shouldPlayBgm =
       puzzleState !== 'retired' &&
       !videoPlaying &&
@@ -313,7 +357,7 @@ const App: React.FC = () => {
           bgmOscillatorRef.current = null;
       }
     }
-  }, [puzzleState, videoPlaying, timerSeconds, isPaused]);
+  }, [puzzleState, videoPlaying, timerSeconds, isPaused, postCommentaryScreen]);
 
   // Handle repeating TTS for pause state
   useEffect(() => {
@@ -709,7 +753,7 @@ const App: React.FC = () => {
      if (maidTimer > 0) return;
 
      if (deliveredItemCodes.includes(maidItemInput)) {
-         setMaidDeliveryError("その物品は公演のなかでは存在しません");
+         setMaidDeliveryError("すでに配達済みです");
          setMaidDeliveryState('error');
          return;
      }
@@ -1584,11 +1628,18 @@ const App: React.FC = () => {
             </div>
         )}
 
-        {/* Normal idle state (Desktop / Setup Complete) */}
+        {/* Normal idle state (Desktop / Setup Complete wait screen) */}
         {puzzleState === 'idle' && (
-            <div className="flex flex-col items-center justify-center text-white/10">
-                <div className="text-8xl font-black tracking-[3rem] translate-x-[1.5rem] mb-2 uppercase">GOV-CORE</div>
-                <div className="text-xs uppercase tracking-[1rem] font-light">分子解析 & 復号管理システム</div>
+            <div className="flex flex-col items-center justify-center text-center p-8 space-y-6">
+                <div className="w-16 h-16 bg-white/5 border border-white/10 rounded-2xl flex items-center justify-center animate-pulse">
+                     <Cpu size={28} className="text-white/40" />
+                </div>
+                <div>
+                     <h2 className="text-2xl font-black text-white uppercase tracking-[0.4em]">しばらくお待ちください</h2>
+                     <p className="text-[10px] text-white/30 uppercase tracking-[0.2em] font-mono mt-2 animate-pulse">
+                          謎解きの公演準備完了。まもなくミッションを開始します。
+                     </p>
+                </div>
             </div>
         )}
       </main>
