@@ -969,7 +969,7 @@ const App: React.FC = () => {
                                 <span className="text-[10px] font-bold uppercase tracking-widest text-white/40">端末ステータス</span>
                             </div>
                             <div className="flex-1 overflow-y-auto space-y-4">
-                                <DeviceStats devices={connectedDevices} />
+                                <DeviceStats devices={connectedDevices} isPuzzleActive={puzzleTimer !== null} />
                             </div>
                         </section>
 

@@ -6,7 +6,11 @@ interface SetupProps {
   onComplete: () => void;
 }
 
-export const Setup: React.FC<SetupProps> = ({ onComplete }) => {
+interface OfflineSetupProps extends SetupProps {
+  onStartOffline: (targetTime: { hour: string; minute: string; second: string }) => void;
+}
+
+export const Setup: React.FC<OfflineSetupProps> = ({ onComplete, onStartOffline }) => {
   const [step, setStep] = useState(1);
   const [deviceName, setDeviceName] = useState(localStorage.getItem('deviceName') || '');
   const [ip, setIp] = useState(localStorage.getItem('masterUrl')?.replace('http://', '') || '');
@@ -20,6 +24,9 @@ export const Setup: React.FC<SetupProps> = ({ onComplete }) => {
       setup: localStorage.getItem('pass_setup') || 'ADMIN_SETUP'
   });
   const [bgmVolume, setBgmVolume] = useState<number>(parseInt(localStorage.getItem('bgmVolume') || '50'));
+
+  // Offline Mode Patterns Configuration states
+  const [offlineTargetTime, setOfflineTargetTime] = useState({ hour: '12', minute: '00', second: '00' });
 
   const testConnection = async () => {
     setTestStatus('testing');
@@ -156,10 +163,52 @@ export const Setup: React.FC<SetupProps> = ({ onComplete }) => {
                 <button
                     onClick={testConnection}
                     disabled={!ip || testStatus === 'testing'}
-                    className="w-full py-3 mb-8 rounded-xl bg-white/5 border border-white/10 text-[10px] font-bold uppercase tracking-widest hover:bg-white/10 transition-all disabled:opacity-50"
+                    className="w-full py-3 mb-4 rounded-xl bg-white/5 border border-white/10 text-[10px] font-bold uppercase tracking-widest hover:bg-white/10 transition-all disabled:opacity-50"
                 >
                     接続テストを実行
                 </button>
+
+                <div className="pt-4 border-t border-white/5">
+                    <label className="text-[10px] uppercase tracking-widest text-white/40 mb-2 block text-left ml-2">【万が一用】オフライン開催予約</label>
+                    <div className="grid grid-cols-3 gap-2 mb-3">
+                        <select
+                            value={offlineTargetTime.hour}
+                            onChange={(e) => setOfflineTargetTime({ ...offlineTargetTime, hour: e.target.value })}
+                            className="bg-[#151518] border border-white/10 rounded-xl px-2 py-3 text-sm font-mono text-white"
+                        >
+                            {Array.from({ length: 24 }).map((_, i) => (
+                                <option key={i} value={String(i).padStart(2, '0')}>{String(i).padStart(2, '0')}時</option>
+                            ))}
+                        </select>
+                        <select
+                            value={offlineTargetTime.minute}
+                            onChange={(e) => setOfflineTargetTime({ ...offlineTargetTime, minute: e.target.value })}
+                            className="bg-[#151518] border border-white/10 rounded-xl px-2 py-3 text-sm font-mono text-white"
+                        >
+                            {Array.from({ length: 60 }).map((_, i) => (
+                                <option key={i} value={String(i).padStart(2, '0')}>{String(i).padStart(2, '0')}分</option>
+                            ))}
+                        </select>
+                        <select
+                            value={offlineTargetTime.second}
+                            onChange={(e) => setOfflineTargetTime({ ...offlineTargetTime, second: e.target.value })}
+                            className="bg-[#151518] border border-white/10 rounded-xl px-2 py-3 text-sm font-mono text-white"
+                        >
+                            {Array.from({ length: 60 }).map((_, i) => (
+                                <option key={i} value={String(i).padStart(2, '0')}>{String(i).padStart(2, '0')}秒</option>
+                            ))}
+                        </select>
+                    </div>
+                    <button
+                        onClick={() => {
+                            localStorage.setItem('deviceName', deviceName || 'OFFLINE_TERMINAL');
+                            onStartOffline(offlineTargetTime);
+                        }}
+                        className="w-full py-4.5 rounded-2xl bg-red-950/40 hover:bg-red-950/60 border border-red-900/30 text-red-500 font-bold text-xs uppercase tracking-widest transition-all"
+                    >
+                        オフラインで開催（時間予約）
+                    </button>
+                </div>
             </div>
         )}
 

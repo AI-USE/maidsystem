@@ -232,7 +232,12 @@ const App: React.FC = () => {
   const [timerSeconds, setTimerSeconds] = useState<number | null>(null);
   const [remoteLogs, setRemoteLogs] = useState<string[]>([]);
 
-  const { isConnected, isPaired, lastCommand, emit } = useRemoteControl(masterUrl);
+  // Offline/Forced-Offline patterns
+  const [isForcedOfflineMode, setIsForcedOfflineMode] = useState(false);
+  const [offlineScheduledTime, setOfflineScheduledTime] = useState<{ hour: string; minute: string; second: string } | null>(null);
+  const [offlineStandbyActive, setOfflineStandbyActive] = useState(false);
+
+  const { isConnected, isPaired, lastCommand, emit } = useRemoteControl(isForcedOfflineMode ? null : masterUrl);
   const audioRefs = useRef<{ [key: string]: HTMLAudioElement }>({});
 
   const osContextValue = useMemo<OSContextType>(() => ({
@@ -439,7 +444,23 @@ const App: React.FC = () => {
                 setPostCommentaryScreen('failed');
               }
             }
+
+            // Check if results video just ended and we are offline (forced or connection lost)
+            const isOffline = isForcedOfflineMode || (!isConnected || !isPaired);
+            const isResultsVideo = videoType === 'correct' || videoType === 'close' || videoType === 'failed';
+
             setVideoType('none');
+
+            if (isOffline && isResultsVideo) {
+              // Automatically trigger commentary video
+              setTimeout(() => {
+                playSynthSound('open');
+                setVideoPlaying(true);
+                setVideoProgress(0);
+                setVideoType('commentary');
+              }, 1000);
+            }
+
             return 100;
           }
           return prev + 1; // 100 steps total, takes ~10 seconds at 100ms interval
@@ -447,7 +468,7 @@ const App: React.FC = () => {
       }, 100);
     }
     return () => clearInterval(interval);
-  }, [videoPlaying, videoType, gameResult]);
+  }, [videoPlaying, videoType, gameResult, isForcedOfflineMode, isConnected, isPaired]);
 
   // Execution Countdown Timer
   // Starts ticking only after preparation is complete (i.e. 'locked', 'browsing_pdf_1', or 'admin_desktop')
@@ -458,9 +479,14 @@ const App: React.FC = () => {
         setTimerSeconds(prev => {
           if (prev && prev > 1) return prev - 1;
           if (prev === 1) {
-             // 7 minutes expiration: play direct unskippable video, then black out.
-             setVideoPlaying(true);
-             setVideoProgress(0);
+             // 7 minutes expiration: trigger 5-second blackout first, and 3 seconds after blackout starts, play results video.
+             setTimeout(() => {
+                const outcome = gameResult !== 'none' ? gameResult : 'failed';
+                playSynthSound('open');
+                setVideoPlaying(true);
+                setVideoProgress(0);
+                setVideoType(outcome);
+             }, 3000);
              return 0;
           }
           return 0;
@@ -468,7 +494,7 @@ const App: React.FC = () => {
       }, 1000);
     }
     return () => clearInterval(interval);
-  }, [timerSeconds, puzzleState, isPaused, videoPlaying]);
+  }, [timerSeconds, puzzleState, isPaused, videoPlaying, gameResult]);
 
   useEffect(() => {
     if ((window as any).electron) {
@@ -749,6 +775,8 @@ const App: React.FC = () => {
     }
   };
 
+  const [offlineMaidIntervalId, setOfflineMaidIntervalId] = useState<any>(null);
+
   const handleMaidDeliver = () => {
      if (maidTimer > 0) return;
 
@@ -765,9 +793,55 @@ const App: React.FC = () => {
 
          if (matched) {
              setMaidDeliveryState('delivering');
-             emit('CONNECTION_MSG', {
-                 text: `MAID_DELIVERY_REQUEST: Room: "${maidRoomInput}", Item: "${maidItemInput}", ItemName: "${matched.name}"`
-             });
+
+             // Check if we are offline (forced or connection lost)
+             const isOffline = isForcedOfflineMode || (!isConnected || !isPaired);
+
+             if (isOffline) {
+                 // Suppress background ambient hum BGM
+                 if (bgmAudioRef.current) bgmAudioRef.current.pause();
+
+                 // Loop announcement with max volume for 10 seconds, then set to delivered/cleared
+                 const text = `${localStorage.getItem('deviceName') || '端末'}、${matched.name}、運んでください。`;
+                 const speakAnnouncementOffline = () => {
+                     if ('speechSynthesis' in window) {
+                         window.speechSynthesis.cancel();
+                         const utterance = new SpeechSynthesisUtterance(text);
+                         utterance.lang = 'ja-JP';
+                         utterance.rate = 1.0;
+                         utterance.volume = 1.0; // max volume
+                         window.speechSynthesis.speak(utterance);
+                     }
+                 };
+
+                 speakAnnouncementOffline();
+                 const intervalId = setInterval(speakAnnouncementOffline, 2500);
+                 setOfflineMaidIntervalId(intervalId);
+
+                 setTimeout(() => {
+                     clearInterval(intervalId);
+                     setOfflineMaidIntervalId(null);
+                     if ('speechSynthesis' in window) {
+                         window.speechSynthesis.cancel();
+                     }
+
+                     // Resume background ambient hum BGM if standard game is running
+                     if (puzzleState !== 'retired' && !videoPlaying && !isPaused && timerSeconds !== 0) {
+                         if (bgmAudioRef.current) bgmAudioRef.current.play().catch(e => console.log("BGM play catch:", e));
+                     }
+
+                     // Put into deliveredItemCodes list so it prevents re-request
+                     setDeliveredItems(prev => [...prev, matched.itemCode]);
+                     setMaidDeliveryState('idle');
+                     setMaidRoomInput('');
+                     setMaidItemInput('');
+                 }, 10000);
+
+             } else {
+                 emit('CONNECTION_MSG', {
+                     text: `MAID_DELIVERY_REQUEST: Room: "${maidRoomInput}", Item: "${maidItemInput}", ItemName: "${matched.name}"`
+                 });
+             }
          } else {
              setMaidDeliveryError("指定された部屋に指定されたものが見つかりませんでした");
              setMaidDeliveryState('error');
@@ -803,11 +877,199 @@ const App: React.FC = () => {
      });
   };
 
+  // Pattern 2 scheduled offline timer handler
+  useEffect(() => {
+    let interval: any;
+    if (offlineStandbyActive && offlineScheduledTime) {
+      interval = setInterval(() => {
+        const now = new Date();
+        const nowH = String(now.getHours()).padStart(2, '0');
+        const nowM = String(now.getMinutes()).padStart(2, '0');
+        const nowS = String(now.getSeconds()).padStart(2, '0');
+
+        if (nowH === offlineScheduledTime.hour &&
+            nowM === offlineScheduledTime.minute &&
+            nowS === offlineScheduledTime.second) {
+
+          clearInterval(interval);
+          setOfflineStandbyActive(false);
+
+          // Trigger offline auto-start game
+          const targetTime = new Date();
+          targetTime.setHours(23, 53, 40, 0);
+          setTimeOverride(targetTime);
+          setTimerSeconds(420);
+          setPuzzleState('idle');
+          setPuzzleInput('');
+          setPuzzleError(false);
+          setExecutionAborted(false);
+          setIsPaused(false);
+          setGameResult('none');
+          setPostCommentaryScreen('none');
+
+          setVideoPlaying(true);
+          setVideoProgress(0);
+          setVideoType('start');
+        }
+      }, 1000);
+    }
+    return () => clearInterval(interval);
+  }, [offlineStandbyActive, offlineScheduledTime]);
+
+  if (offlineStandbyActive && offlineScheduledTime) {
+      return (
+          <div className="fixed inset-0 z-[10000] bg-[#050508] flex flex-col items-center justify-center p-6 text-center select-none font-mono">
+              <div className="scanlines z-0" />
+              <div className="absolute inset-0 opacity-10 pointer-events-none z-0">
+                  <div className="absolute top-0 left-0 w-full h-full bg-[radial-gradient(#ffffff_1px,transparent_1px)] [background-size:24px_24px]" />
+              </div>
+              <motion.div
+                initial={{ scale: 0.95, y: 15 }}
+                animate={{ scale: 1, y: 0 }}
+                className="w-full max-w-md glass-panel p-10 rounded-[32px] border-red-900/30 bg-black/40 relative z-10 flex flex-col items-center shadow-[0_32px_64px_-12px_rgba(0,0,0,0.9)]"
+              >
+                  <div className="w-16 h-16 bg-red-950/40 rounded-[24px] flex items-center justify-center mb-6 border border-red-500/30 animate-pulse">
+                      <Clock className="text-red-500" size={32} />
+                  </div>
+
+                  <h2 className="text-xl font-black tracking-[0.2em] text-white uppercase mb-2">OFFLINE_STANDBY</h2>
+                  <p className="text-[10px] text-red-500/80 uppercase tracking-[0.1em] font-bold mb-8 max-w-xs leading-relaxed">
+                      オフライン開催待機中。指定時刻になると自動的に開始します。
+                  </p>
+
+                  <div className="p-4 rounded-xl bg-red-950/20 border border-red-900/30 text-center w-full mb-8">
+                      <span className="text-[10px] uppercase text-white/40 tracking-widest block mb-1">開始予定時刻</span>
+                      <span className="text-2xl font-mono font-bold text-red-500">
+                          {offlineScheduledTime.hour}時{offlineScheduledTime.minute}分{offlineScheduledTime.second}秒
+                      </span>
+                  </div>
+
+                  {/* Cancel / Power button triggers password check before resetting */}
+                  <button
+                    onClick={() => {
+                        playSynthSound('open');
+                        setShowPowerPrompt(true);
+                    }}
+                    className="p-4 bg-red-950/40 border border-red-500/30 hover:bg-red-950/70 rounded-full text-red-500 transition-all z-50 flex items-center justify-center"
+                    title="オフライン予約キャンセル"
+                  >
+                       <Power size={24} />
+                  </button>
+                  <span className="text-[9px] text-white/30 uppercase mt-2">
+                      管理パネル起動（予約自動取消）
+                  </span>
+              </motion.div>
+
+              {/* Reuse Admin Password Prompt modal to unlock and cancel reservation */}
+              <AnimatePresence>
+                {showPowerPrompt && (
+                  <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    className="fixed inset-0 z-[10100] bg-black/85 backdrop-blur-md flex items-center justify-center p-6"
+                  >
+                    <motion.div
+                      initial={{ scale: 0.92, opacity: 0 }}
+                      animate={{ scale: 1, opacity: 1 }}
+                      className="w-full max-w-sm glass-panel p-8 text-center border-red-950/20 bg-black/40"
+                    >
+                      <Cpu className="mx-auto mb-6 text-red-500/60 animate-pulse" size={32} />
+                      <h2 className="text-lg font-bold mb-2 tracking-widest uppercase text-white">予約の取り消し</h2>
+                      <p className="text-[10px] text-white/40 mb-8 uppercase tracking-tighter">管理者パスコードを入力してください</p>
+
+                      <div className="relative mb-2">
+                        <input
+                            type="password"
+                            autoFocus
+                            placeholder="ADMIN CODE"
+                            className={`w-full bg-black/50 border rounded-xl px-4 py-4 text-center outline-none focus:border-red-900 transition-all text-xl tracking-[0.5em] text-red-500 placeholder-red-900/30 ${powerError ? 'border-red-500' : 'border-white/10'}`}
+                            value={powerInput}
+                            onChange={(e) => {
+                                setPowerInput(e.target.value);
+                                if (powerError) setPowerError(false);
+                            }}
+                            onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                    const adminPass = localStorage.getItem('pass_admin') || 'ADMIN_DASH';
+                                    if (powerInput === adminPass) {
+                                        playSynthSound('success');
+                                        setShowPowerPrompt(false);
+                                        setPowerInput('');
+                                        setPowerError(false);
+                                        setOfflineStandbyActive(false);
+                                        setOfflineScheduledTime(null);
+                                        setIsForcedOfflineMode(false);
+                                        setShowSetup(true);
+                                    } else {
+                                        setPowerError(true);
+                                    }
+                                }
+                            }}
+                        />
+                      </div>
+
+                      <div className="h-4 mb-4">
+                          {powerError && (
+                              <span className="text-[10px] text-red-500 font-bold uppercase tracking-widest animate-pulse">
+                                  認証コード不一致
+                              </span>
+                          )}
+                      </div>
+
+                      <div className="flex gap-4">
+                        <button
+                            onClick={() => {
+                                setShowPowerPrompt(false);
+                                setPowerInput('');
+                                setPowerError(false);
+                            }}
+                            className="flex-1 py-3 rounded-xl border border-white/5 hover:bg-white/5 transition-all text-xs uppercase tracking-widest"
+                        >
+                          戻る
+                        </button>
+                        <button
+                            onClick={() => {
+                                const adminPass = localStorage.getItem('pass_admin') || 'ADMIN_DASH';
+                                if (powerInput === adminPass) {
+                                    playSynthSound('success');
+                                    setShowPowerPrompt(false);
+                                    setPowerInput('');
+                                    setPowerError(false);
+                                    setOfflineStandbyActive(false);
+                                    setOfflineScheduledTime(null);
+                                    setIsForcedOfflineMode(false);
+                                    setShowSetup(true);
+                                } else {
+                                    setPowerError(true);
+                                }
+                            }}
+                            className="flex-1 py-3 rounded-xl bg-red-950/40 hover:bg-red-950/60 text-red-400 border border-red-900/40 font-bold text-xs uppercase tracking-widest transition-all"
+                        >
+                          キャンセル確定
+                        </button>
+                      </div>
+                    </motion.div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+          </div>
+      );
+  }
+
   if (showSetup) {
-      return <Setup onComplete={() => {
-          setShowSetup(false);
-          setMasterUrl(localStorage.getItem('masterUrl'));
-      }} />;
+      return <Setup
+          onComplete={() => {
+              setShowSetup(false);
+              setMasterUrl(localStorage.getItem('masterUrl'));
+          }}
+          onStartOffline={(targetTime) => {
+              setOfflineScheduledTime(targetTime);
+              setIsForcedOfflineMode(true);
+              setOfflineStandbyActive(true);
+              setShowSetup(false);
+          }}
+      />;
   }
 
   // Determine current active displayed clock & Date
