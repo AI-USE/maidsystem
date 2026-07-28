@@ -115,6 +115,8 @@ io.on('connection', (socket) => {
       const pDeviceId = socketMap.get(sid);
       if (pDeviceId && devices.has(pDeviceId)) {
           devices.get(pDeviceId).activeApp = state.appId;
+          devices.get(pDeviceId).puzzleState = state.puzzleState || 'idle';
+          devices.get(pDeviceId).isPaused = state.isPaused || false;
           updateDeviceList();
       }
   });

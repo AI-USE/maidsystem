@@ -519,8 +519,17 @@ const App: React.FC = () => {
                   </div>
 
                   <div className="flex-1 grid grid-cols-3 gap-6 relative z-[60]">
-                      {connectedDevices.map((device, i) => (
-                          <div key={device.id} className="relative bg-white/5 border border-white/10 rounded-3xl overflow-hidden group">
+                      {connectedDevices.map((device, i) => {
+                          const isRetired = retiredDeviceIds.includes(device.id);
+                          let borderClass = 'border-white/10';
+                          if (isRetired) borderClass = 'border-red-500 shadow-[0_0_15px_rgba(239,68,68,0.3)] animate-pulse';
+                          else if (device.isPaused) borderClass = 'border-yellow-500 shadow-[0_0_15px_rgba(234,179,8,0.3)]';
+                          else if (device.puzzleState === 'locked') borderClass = 'border-orange-500 shadow-[0_0_15px_rgba(249,115,22,0.3)]';
+                          else if (device.puzzleState === 'browsing_pdf_1') borderClass = 'border-green-500 shadow-[0_0_15px_rgba(34,197,94,0.3)]';
+                          else if (device.puzzleState === 'admin_desktop') borderClass = 'border-purple-500 shadow-[0_0_15px_rgba(168,85,247,0.3)]';
+
+                          return (
+                          <div key={device.id} className={`relative bg-white/5 border ${borderClass} rounded-3xl overflow-hidden group`}>
                               {deviceFrames[device.id] ? (
                                   <img src={deviceFrames[device.id]} className="w-full h-full object-cover grayscale brightness-75 contrast-125" alt="feed" />
                               ) : (
@@ -531,7 +540,7 @@ const App: React.FC = () => {
                               )}
 
                               {/* OSD Info */}
-                              <div className="absolute top-6 left-6 flex flex-col gap-1">
+                              <div className="absolute top-6 left-6 flex flex-col gap-1 z-10">
                                   <div className="text-xs font-black bg-black/60 px-3 py-1 rounded-sm border-l-2 border-red-500 uppercase tracking-widest">
                                       CAM_{String(i + 1).padStart(2, '0')}
                                   </div>
@@ -549,7 +558,8 @@ const App: React.FC = () => {
 
                               <div className="absolute inset-0 border-2 border-white/0 group-hover:border-white/10 transition-all pointer-events-none" />
                           </div>
-                      ))}
+                          );
+                      })}
                       {connectedDevices.length === 0 && (
                           <div className="col-span-3 flex flex-col items-center justify-center opacity-10">
                               <ShieldAlert size={120} />
@@ -809,16 +819,26 @@ const App: React.FC = () => {
                             <div className="absolute inset-0 pointer-events-none z-30 opacity-20 bg-[linear-gradient(rgba(18,16,16,0)_50%,rgba(0,0,0,0.25)_50%),linear-gradient(90deg,rgba(255,0,0,0.06),rgba(0,255,0,0.02),rgba(0,0,255,0.06))] bg-[length:100%_2px,3px_100%]" />
 
                             <div className="absolute inset-0 p-6 grid grid-cols-2 gap-4 overflow-y-auto">
-                                {connectedDevices.map((device, i) => (
-                                    <div key={device.id} className="relative bg-white/5 rounded-2xl border border-white/10 aspect-video overflow-hidden flex items-center justify-center">
+                                {connectedDevices.map((device, i) => {
+                                    const isRetired = retiredDeviceIds.includes(device.id);
+                                    let borderClass = 'border-white/10';
+                                    if (isRetired) borderClass = 'border-red-500 shadow-[0_0_10px_rgba(239,68,68,0.2)] animate-pulse';
+                                    else if (device.isPaused) borderClass = 'border-yellow-500 shadow-[0_0_10px_rgba(234,179,8,0.2)]';
+                                    else if (device.puzzleState === 'locked') borderClass = 'border-orange-500 shadow-[0_0_10px_rgba(249,115,22,0.2)]';
+                                    else if (device.puzzleState === 'browsing_pdf_1') borderClass = 'border-green-500 shadow-[0_0_10px_rgba(34,197,94,0.2)]';
+                                    else if (device.puzzleState === 'admin_desktop') borderClass = 'border-purple-500 shadow-[0_0_10px_rgba(168,85,247,0.2)]';
+
+                                    return (
+                                    <div key={device.id} className={`relative bg-white/5 rounded-2xl border ${borderClass} aspect-video overflow-hidden flex items-center justify-center`}>
                                          {deviceFrames[device.id] ? (
                                              <img src={deviceFrames[device.id]} className="w-full h-full object-cover grayscale opacity-80" alt="feed" />
                                          ) : (
                                              <div className="text-[8px] font-black text-white/10 uppercase tracking-[0.4em]">Signal_Wait</div>
                                          )}
-                                         <div className="absolute top-2 left-2 px-2 py-0.5 bg-black/60 rounded font-mono text-[8px] text-white/60">CAM_{i+1}</div>
+                                         <div className="absolute top-2 left-2 px-2 py-0.5 bg-black/60 rounded font-mono text-[8px] text-white/60 z-10">CAM_{i+1}</div>
                                     </div>
-                                ))}
+                                    );
+                                })}
                                 {connectedDevices.length === 0 && (
                                      <div className="col-span-2 flex flex-col items-center justify-center gap-4 opacity-10">
                                          <Camera size={64} />

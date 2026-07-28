@@ -450,9 +450,13 @@ const App: React.FC = () => {
 
   useEffect(() => {
       if (isConnected && isPaired) {
-          emit('APP_STATE_CHANGED', { appId: openAppId || 'IDLE' });
+          emit('APP_STATE_CHANGED', {
+              appId: openAppId || 'IDLE',
+              puzzleState,
+              isPaused
+          });
       }
-  }, [openAppId, isConnected, isPaired]);
+  }, [openAppId, isConnected, isPaired, puzzleState, isPaused]);
 
   const handleRemoteCommand = (cmd: any) => {
     switch (cmd.type) {
@@ -921,7 +925,7 @@ const App: React.FC = () => {
       />
 
       {/* 1. Status Bar (Top) */}
-      <header className="absolute top-0 left-0 w-full h-12 flex items-center justify-between px-8 z-50 bg-black/40 border-b border-red-950/20 backdrop-blur-md">
+      <header className={`absolute top-0 left-0 w-full h-12 flex items-center justify-between px-8 z-50 bg-black/40 border-b border-red-950/20 backdrop-blur-md ${puzzleState === 'browsing_pdf_1' ? 'hidden' : ''}`}>
         <div className="absolute top-4 left-6 flex items-center gap-2 pointer-events-none opacity-80">
             <div className="w-1.5 h-1.5 rounded-full bg-red-600 animate-pulse" />
             <span className="text-[9px] font-black text-red-600 tracking-[0.2em]">SECURE_GRID</span>
@@ -975,30 +979,26 @@ const App: React.FC = () => {
       </header>
 
       {/* 2. Main Area (Center) */}
-      <main className="relative h-screen w-full flex items-center justify-center p-20 z-10 pt-20 pb-28">
+      <main className={`relative h-screen w-full flex items-center justify-center z-10 ${puzzleState === 'browsing_pdf_1' ? 'p-0 pt-0 pb-0' : 'p-20 pt-20 pb-28'}`}>
 
-        {/* State A: browsing_pdf_1 (Only First Scrollable PDF File) */}
+        {/* State A: browsing_pdf_1 (Fullscreen absolute layout covering everything) */}
         {puzzleState === 'browsing_pdf_1' && (
-            <div className="w-full h-full flex gap-8">
-                {/* Real embedded PDF 1 viewport */}
-                <div className="flex-1 glass-panel p-2 border-red-950/20 bg-black/50 overflow-hidden flex flex-col relative">
-                     <iframe
-                       src="/documents/doc1.pdf"
-                       className="w-full h-full border-0 rounded-2xl bg-zinc-950"
-                       title="処刑装置起動手順_LOG_832.pdf"
-                     />
-                </div>
+            <div className="fixed inset-0 z-50 bg-black flex flex-col">
+                {/* Embedded PDF 1 viewport occupying 100% of the screen */}
+                <iframe
+                   src="/documents/doc1.pdf"
+                   className="w-full h-full border-0 bg-black"
+                   title="処刑装置起動手順_LOG_832.pdf"
+                />
 
-                {/* PDF Right panel info */}
-                <div className="w-80 flex flex-col gap-6">
-                     <div className="glass-panel p-6 border-red-950/20 bg-black/40 text-center flex flex-col items-center justify-center h-full">
-                          <ShieldAlert className="text-red-500 animate-pulse mb-4" size={40} />
-                          <h4 className="text-xs font-black tracking-widest uppercase mb-2 text-white">避難勧告発令</h4>
-                          <p className="text-[10px] text-white/50 leading-relaxed uppercase">
-                              施設内のすべての生命体は、速やかに退出準備を開始してください。システム制御は一時的に制限されています。
-                          </p>
-                     </div>
-                </div>
+                {/* Hidden floating click trigger at the top right to open setup admin prompt */}
+                <button
+                   onClick={() => setShowPowerPrompt(true)}
+                   className="absolute top-4 right-4 p-3 bg-red-950/40 border border-red-500/20 hover:bg-red-950/80 rounded-full text-red-500 transition-all z-50 flex items-center justify-center"
+                   title="管理者メニュー起動"
+                >
+                     <Power size={18} />
+                </button>
             </div>
         )}
 
@@ -1331,34 +1331,27 @@ const App: React.FC = () => {
       </main>
 
       {/* 3. Taskbar & Dock (Bottom) */}
-      <footer className="absolute bottom-8 left-0 w-full flex justify-center z-50">
+      <footer className={`absolute bottom-8 left-0 w-full flex justify-center z-50 ${puzzleState === 'browsing_pdf_1' ? 'hidden' : ''}`}>
         <nav className="glass-panel px-6 py-3.5 flex items-center gap-4 border-white/5 bg-black/60">
-
-          {/* Phase A: When browsing PDF 1 - show ONLY the Power (shutdown) button */}
-          {puzzleState === 'browsing_pdf_1' ? (
-              <button
-                onClick={() => setShowPowerPrompt(true)}
-                className="p-3.5 rounded-2xl text-red-500/80 hover:text-red-400 hover:bg-red-500/10 transition-all shadow-[0_0_15px_rgba(239,68,68,0.1)] flex items-center justify-center"
-              >
-                <Power size={22} />
-              </button>
-          ) : (
-              /* Phase B: Default dock (Exit modal triggers power) */
+              {/* Phase B: Default dock (Exit modal triggers power) */}
               <>
                   <div className="text-[9px] font-bold text-white/30 uppercase tracking-[0.2em] px-2 font-mono">GOV-CORE DOCK</div>
                   <div className="w-[1px] h-6 bg-white/10 mx-1" />
                   <button
                     onClick={() => {
-                      // Trigger customized setup password prompt instead of directly showing exit modal
-                      playSynthSound('open');
-                      setShowExitModal(true);
+                      if (puzzleState === 'admin_desktop') {
+                         playSynthSound('tap');
+                         alert("これは謎には関係ありません");
+                      } else {
+                         playSynthSound('open');
+                         setShowExitModal(true);
+                      }
                     }}
                     className="p-3 rounded-2xl text-white/20 hover:text-red-500 hover:bg-red-500/10 transition-all"
                   >
                     <Power size={20} />
                   </button>
               </>
-          )}
         </nav>
       </footer>
 
