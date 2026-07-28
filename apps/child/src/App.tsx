@@ -22,7 +22,8 @@ import {
   ChevronRight,
   Terminal as TerminalIcon,
   ShieldCheck,
-  AlertCircle
+  AlertCircle,
+  Loader2
 } from 'lucide-react';
 import { Setup } from './components/Setup';
 import { OSContext, OSContextType } from './hooks/useOS';
@@ -176,6 +177,7 @@ const App: React.FC = () => {
   // Fullscreen unskippable video state
   const [videoPlaying, setVideoPlaying] = useState(false);
   const [videoProgress, setVideoProgress] = useState(0);
+  const [videoType, setVideoType] = useState<'start' | 'admin' | 'none'>('none');
 
   // Admin Power Button Password Prompt State (using pass_admin)
   const [showPowerPrompt, setShowPowerPrompt] = useState(false);
@@ -352,11 +354,18 @@ const App: React.FC = () => {
     return () => clearInterval(timer);
   }, [isPaused]);
 
-  // Delay opening PDF but don't play unskippable video on Admin Desktop load
+  // Delay unskippable video 3 seconds after booting into Admin Desktop
   useEffect(() => {
     if (puzzleState === 'admin_desktop') {
       playSynthSound('open');
       setAdminPdfOpen(true);
+      const videoTimeout = setTimeout(() => {
+        setVideoPlaying(true);
+        setVideoProgress(0);
+        setVideoType('admin');
+      }, 3000);
+
+      return () => clearTimeout(videoTimeout);
     }
   }, [puzzleState]);
 
@@ -369,6 +378,10 @@ const App: React.FC = () => {
           if (prev >= 100) {
             clearInterval(interval);
             setVideoPlaying(false);
+            if (videoType === 'start') {
+              setPuzzleState('locked');
+            }
+            setVideoType('none');
             return 100;
           }
           return prev + 1; // 100 steps total, takes ~10 seconds at 100ms interval
@@ -376,13 +389,13 @@ const App: React.FC = () => {
       }, 100);
     }
     return () => clearInterval(interval);
-  }, [videoPlaying]);
+  }, [videoPlaying, videoType]);
 
   // Execution Countdown Timer
   // Starts ticking only after preparation is complete (i.e. 'locked', 'browsing_pdf_1', or 'admin_desktop')
   useEffect(() => {
     let interval: any;
-    if (timerSeconds !== null && timerSeconds > 0 && puzzleState !== 'idle' && !isPaused) {
+    if (timerSeconds !== null && timerSeconds > 0 && puzzleState !== 'idle' && !isPaused && !videoPlaying) {
       interval = setInterval(() => {
         setTimerSeconds(prev => {
           if (prev && prev > 1) return prev - 1;
@@ -397,7 +410,7 @@ const App: React.FC = () => {
       }, 1000);
     }
     return () => clearInterval(interval);
-  }, [timerSeconds, puzzleState, isPaused]);
+  }, [timerSeconds, puzzleState, isPaused, videoPlaying]);
 
   useEffect(() => {
     if ((window as any).electron) {
@@ -522,12 +535,17 @@ const App: React.FC = () => {
         // Set execution countdown to exactly 7 minutes (420 seconds)
         setTimerSeconds(420);
 
-        // Bypasses preparation screen, transitions directly to locked state
-        setPuzzleState('locked');
+        // Transition to idle, then start unskippable video
+        setPuzzleState('idle');
         setPuzzleInput('');
         setPuzzleError(false);
         setExecutionAborted(false);
         setIsPaused(false);
+
+        // Trigger start video playback
+        setVideoPlaying(true);
+        setVideoProgress(0);
+        setVideoType('start');
         break;
       }
       case 'MAID_DELIVERY_CLEARED': {
@@ -555,13 +573,19 @@ const App: React.FC = () => {
         setTimeOverride(targetTime);
         setTimerSeconds(420);
 
-        setPuzzleState('locked');
+        // Transition to idle, then start unskippable video
+        setPuzzleState('idle');
         setPuzzleInput('');
         setPuzzleError(false);
         setExecutionAborted(false);
         setOverrideSubmitted(false);
         setOverrideText('');
         setIsPaused(false);
+
+        // Trigger start video playback
+        setVideoPlaying(true);
+        setVideoProgress(0);
+        setVideoType('start');
         break;
       }
       case 'PUZZLE_PAUSE': {
