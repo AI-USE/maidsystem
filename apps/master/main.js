@@ -141,6 +141,19 @@ io.on('connection', (socket) => {
         });
     }
 
+    if (data.text && data.text.includes('OVERRIDE_SUBMITTED:')) {
+        try {
+            const passMatch = data.text.match(/Submitted Passcode proposal:\s*"([^"]+)"/);
+            const passcode = passMatch ? passMatch[1] : '';
+            if (pDeviceId && devices.has(pDeviceId)) {
+                devices.get(pDeviceId).submittedPasscode = passcode;
+                updateDeviceList();
+            }
+        } catch (e) {
+            console.error('Error parsing override passcode proposal:', e);
+        }
+    }
+
     if (data.text && data.text.includes('MAID_DELIVERY_REQUEST:')) {
         try {
             const roomMatch = data.text.match(/Room:\s*"([^"]+)"/);
@@ -277,12 +290,19 @@ ipcMain.on('CLEAR_ALL_MAID_DELIVERIES', (event) => {
 });
 
 ipcMain.on('SEND_REMOTE_COMMAND', (event, { targetId, command }) => {
-  if (command.type === 'PUZZLE_STOP' || command.type === 'PUZZLE_RESTART') {
+  if (command.type === 'PUZZLE_STOP' || command.type === 'PUZZLE_RESTART' || command.type === 'PUZZLE_START') {
     // Clean all deliveries
     for (const [itemCode, delivery] of activeDeliveries.entries()) {
         clearInterval(delivery.intervalId);
     }
     activeDeliveries.clear();
+
+    // Reset all submitted passcodes
+    for (const d of devices.values()) {
+        d.submittedPasscode = undefined;
+    }
+    updateDeviceList();
+
     if (mainWindow) {
         mainWindow.webContents.send('MAID_DELIVERY_RESET');
     }
@@ -554,4 +574,24 @@ ipcMain.on('SET_EMERGENCY_STATE', (event, { active, name }) => {
 
     console.log('Emergency state cleared on Discord Voice Bot.');
   }
+});
+
+let resultsLoopInterval = null;
+
+ipcMain.on('START_RESULTS_LOOP', (event) => {
+    console.log('START_RESULTS_LOOP received.');
+    if (resultsLoopInterval) clearInterval(resultsLoopInterval);
+
+    playDiscordTts("お疲れ様でした。これより成功者と、おしかった人を発表します。");
+    resultsLoopInterval = setInterval(() => {
+        playDiscordTts("お疲れ様でした。これより成功者と、おしかった人を発表します。");
+    }, 8000);
+});
+
+ipcMain.on('STOP_RESULTS_LOOP', (event) => {
+    console.log('STOP_RESULTS_LOOP received.');
+    if (resultsLoopInterval) {
+        clearInterval(resultsLoopInterval);
+        resultsLoopInterval = null;
+    }
 });

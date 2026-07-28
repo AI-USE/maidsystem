@@ -98,9 +98,10 @@ const playSynthSound = (type: 'tap' | 'type' | 'open' | 'success' | 'bgm') => {
      } else if (type === 'bgm') {
          if (bgmAudioRef.current || bgmOscillatorRef.current) return; // Already running
 
+         const volumeValue = parseFloat(localStorage.getItem('bgmVolume') || '50') / 100;
          const audio = new Audio('bgm.mp3');
          audio.loop = true;
-         audio.volume = 0.5;
+         audio.volume = volumeValue;
          bgmAudioRef.current = audio;
 
          audio.play()
@@ -126,7 +127,7 @@ const playSynthSound = (type: 'tap' | 'type' | 'open' | 'success' | 'bgm') => {
                    filter.type = 'lowpass';
                    filter.frequency.value = 150;
 
-                   gain.gain.setValueAtTime(0.35, ctx.currentTime);
+                   gain.gain.setValueAtTime(0.35 * volumeValue, ctx.currentTime);
 
                    osc.connect(filter);
                    filter.connect(gain);
@@ -177,7 +178,7 @@ const App: React.FC = () => {
   // Fullscreen unskippable video state
   const [videoPlaying, setVideoPlaying] = useState(false);
   const [videoProgress, setVideoProgress] = useState(0);
-  const [videoType, setVideoType] = useState<'start' | 'admin' | 'none'>('none');
+  const [videoType, setVideoType] = useState<'start' | 'admin' | 'correct' | 'close' | 'failed' | 'commentary' | 'none'>('none');
 
   // Admin Power Button Password Prompt State (using pass_admin)
   const [showPowerPrompt, setShowPowerPrompt] = useState(false);
@@ -602,6 +603,34 @@ const App: React.FC = () => {
         setVideoProgress(0);
         break;
       }
+      case 'PUZZLE_RESULT_CORRECT': {
+        playSynthSound('open');
+        setVideoPlaying(true);
+        setVideoProgress(0);
+        setVideoType('correct');
+        break;
+      }
+      case 'PUZZLE_RESULT_CLOSE': {
+        playSynthSound('open');
+        setVideoPlaying(true);
+        setVideoProgress(0);
+        setVideoType('close');
+        break;
+      }
+      case 'PUZZLE_RESULT_FAILED': {
+        playSynthSound('open');
+        setVideoPlaying(true);
+        setVideoProgress(0);
+        setVideoType('failed');
+        break;
+      }
+      case 'PUZZLE_RESULT_COMMENTARY': {
+        playSynthSound('open');
+        setVideoPlaying(true);
+        setVideoProgress(0);
+        setVideoType('commentary');
+        break;
+      }
       case 'PUZZLE_RETIRE': {
         setPuzzleState('retired');
         break;
@@ -677,7 +706,7 @@ const App: React.FC = () => {
                  text: `MAID_DELIVERY_REQUEST: Room: "${maidRoomInput}", Item: "${maidItemInput}", ItemName: "${matched.name}"`
              });
          } else {
-             setMaidDeliveryError("存在しません");
+             setMaidDeliveryError("指定された部屋に指定されたものが見つかりませんでした");
              setMaidDeliveryState('error');
              setMaidTimer(5);
          }
@@ -711,6 +740,42 @@ const App: React.FC = () => {
      setShowRetireConfirm(false);
      setPuzzleState('retired');
      emit('CONNECTION_MSG', { text: 'EMERGENCY_RETIRE_TRIGGERED: Player initiated emergency retirement!' });
+  };
+
+  const getVideoTitle = () => {
+    switch (videoType) {
+      case 'start': return "緊急強制システム介入配信";
+      case 'admin': return "管理者ブートシーケンスビデオ";
+      case 'correct': return "ミッションクリア結果映像";
+      case 'close': return "おしい！クリア一歩手前";
+      case 'failed': return "ミッション失敗映像";
+      case 'commentary': return "解説・チュートリアル上映中";
+      default: return "緊急致死処分シークエンス";
+    }
+  };
+
+  const getVideoSub = () => {
+    switch (videoType) {
+      case 'start': return "UNAUTHORIZED OVERRIDE SIGNAL DETECTED";
+      case 'admin': return "GOV-CORE OS ROOT ENGINE BOOT";
+      case 'correct': return "MISSION SUCCESSFUL - LIFE DECODER UNLOCKED";
+      case 'close': return "MISSION CLOSE - SO NEAR AND YET SO FAR";
+      case 'failed': return "MISSION FAILED - SYSTEM RE-RESTRICTED";
+      case 'commentary': return "MISSION COMMENTARY AND TRUTH EXPLANATION";
+      default: return "CRITICAL SYSTEM OVERRIDE PROTOCOL INITIATED";
+    }
+  };
+
+  const getVideoStatus = () => {
+    switch (videoType) {
+      case 'start': return "CRYPTO ENGINE SYNCHRONIZING WITH FLEET...";
+      case 'admin': return "ROOT SHELL INITIALIZED SUCCESSFULLY.";
+      case 'correct': return "ALL TERMINALS ACCESS RESUMED SAFELY.";
+      case 'close': return "PARTIAL SOLUTION DETECTED. RETRY SUSPENDED.";
+      case 'failed': return "EXPIRED DECODING ENGINE DISSOLVED.";
+      case 'commentary': return "COMMENTARY CHANNEL ENGAGED SUCCESSFULLY.";
+      default: return "CRYPTO EXPIRED. DISSOLUTION TIME REACHED 0.";
+    }
   };
 
   return (
@@ -934,15 +999,15 @@ const App: React.FC = () => {
                             </motion.div>
 
                             <div>
-                                 <h1 className="text-2xl font-black text-white tracking-[0.3em] uppercase">緊急致死処分シークエンス</h1>
+                                 <h1 className="text-2xl font-black text-white tracking-[0.3em] uppercase">{getVideoTitle()}</h1>
                                  <p className="text-xs text-red-500/80 uppercase font-bold tracking-widest mt-2">
-                                      CRITICAL SYSTEM OVERRIDE PROTOCOL INITIATED
+                                      {getVideoSub()}
                                  </p>
                             </div>
 
                             <div className="space-y-2 p-6 bg-black/60 rounded-2xl border border-white/5 text-left text-[11px] leading-relaxed text-white/60">
-                                 <div>[SYSTEM_STATUS] CRYPTO EXPIRED. DISSOLUTION TIME REACHED 0.</div>
-                                 <div className="text-red-500 font-bold animate-pulse">[WARN] TERMINAL IS SHUTTING DOWN IMMINENTLY.</div>
+                                 <div>[SYSTEM_STATUS] {getVideoStatus()}</div>
+                                 <div className="text-red-500 font-bold animate-pulse">[WARN] TERMINAL INTERACTION IS RESTRICTED.</div>
                             </div>
                        </div>
 

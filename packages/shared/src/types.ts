@@ -31,7 +31,11 @@ export type CommandType =
   | 'PUZZLE_CANCEL_RETIRE'
   | 'PUZZLE_PAUSE'
   | 'PUZZLE_RESUME'
-  | 'MAID_DELIVERY_CLEARED';
+  | 'MAID_DELIVERY_CLEARED'
+  | 'PUZZLE_RESULT_CORRECT'
+  | 'PUZZLE_RESULT_CLOSE'
+  | 'PUZZLE_RESULT_FAILED'
+  | 'PUZZLE_RESULT_COMMENTARY';
 
 export interface RemoteCommand {
   type: CommandType;

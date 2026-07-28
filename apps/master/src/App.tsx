@@ -169,6 +169,7 @@ const App: React.FC = () => {
                 triggerKey: 'FINISH',
                 fallbackText: '制限時間終了。ゲームオーバーです。システムを強制停止します。'
               });
+              (window as any).electron.send('START_RESULTS_LOOP');
             }
             return null;
           }
@@ -391,6 +392,7 @@ const App: React.FC = () => {
     setRetiredDeviceIds([]);
     if ((window as any).electron) {
         (window as any).electron.send('SET_EMERGENCY_STATE', { active: false });
+        (window as any).electron.send('STOP_RESULTS_LOOP');
     }
     if (retireIntervalRef.current) {
         clearInterval(retireIntervalRef.current);
@@ -415,6 +417,7 @@ const App: React.FC = () => {
     setRetiredDeviceIds([]);
     if ((window as any).electron) {
         (window as any).electron.send('SET_EMERGENCY_STATE', { active: false });
+        (window as any).electron.send('STOP_RESULTS_LOOP');
     }
     if (retireIntervalRef.current) {
         clearInterval(retireIntervalRef.current);
@@ -1004,7 +1007,13 @@ const App: React.FC = () => {
                              </button>
 
                              <button
-                                 onClick={handlePuzzleStop}
+                                 onClick={() => {
+                                     if (confirm("警告: 公演をストップ（中断）しますか？")) {
+                                         if (confirm("本当に中断しますか？この操作は取り消せません。")) {
+                                             handlePuzzleStop();
+                                         }
+                                     }
+                                 }}
                                  className="flex flex-col items-center gap-4 p-6 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 hover:border-red-500/50 rounded-3xl transition-all group"
                              >
                                  <div className="p-4 bg-red-500/20 text-red-400 rounded-2xl group-hover:scale-110 transition-transform">
@@ -1017,7 +1026,13 @@ const App: React.FC = () => {
                              </button>
 
                              <button
-                                 onClick={handlePuzzleRestart}
+                                 onClick={() => {
+                                     if (confirm("警告: 公演を一斉再起動しますか？")) {
+                                         if (confirm("本当に再起動しますか？タイマーが7分にリセットされます。")) {
+                                             handlePuzzleRestart();
+                                         }
+                                     }
+                                 }}
                                  className="flex flex-col items-center gap-4 p-6 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/30 hover:border-blue-500/50 rounded-3xl transition-all group"
                              >
                                  <div className="p-4 bg-blue-500/20 text-blue-400 rounded-2xl group-hover:scale-110 transition-transform">
@@ -1045,6 +1060,61 @@ const App: React.FC = () => {
                                      </div>
                                  </button>
                              )}
+                         </div>
+
+                         <div className="w-full h-[1px] bg-white/10 my-4" />
+
+                         <div className="w-full space-y-4 text-left">
+                             <h3 className="text-xs font-bold text-white/40 uppercase tracking-widest pl-2">公演結果発表 & 解説ビデオ制御</h3>
+                             <div className="grid grid-cols-4 gap-4 w-full">
+                                 <button
+                                     onClick={() => {
+                                         if (confirm("全子機で一斉に【正解動画】を再生しますか？")) {
+                                             sendCommand('PUZZLE_RESULT_CORRECT');
+                                         }
+                                     }}
+                                     className="flex flex-col items-center gap-3 p-4 bg-green-500/5 hover:bg-green-500/10 border border-green-500/20 rounded-2xl transition-all"
+                                 >
+                                     <Play size={18} className="text-green-400" />
+                                     <span className="text-[10px] font-black text-green-400 uppercase tracking-wider">正解動画を流す</span>
+                                 </button>
+
+                                 <button
+                                     onClick={() => {
+                                         if (confirm("全子機で一斉に【おしかった動画】を再生しますか？")) {
+                                             sendCommand('PUZZLE_RESULT_CLOSE');
+                                         }
+                                     }}
+                                     className="flex flex-col items-center gap-3 p-4 bg-yellow-500/5 hover:bg-yellow-500/10 border border-yellow-500/20 rounded-2xl transition-all"
+                                 >
+                                     <Play size={18} className="text-yellow-400" />
+                                     <span className="text-[10px] font-black text-yellow-400 uppercase tracking-wider">おしかった動画を流す</span>
+                                 </button>
+
+                                 <button
+                                     onClick={() => {
+                                         if (confirm("全子機で一斉に【失敗動画】を再生しますか？")) {
+                                             sendCommand('PUZZLE_RESULT_FAILED');
+                                         }
+                                     }}
+                                     className="flex flex-col items-center gap-3 p-4 bg-red-500/5 hover:bg-red-500/10 border border-red-500/20 rounded-2xl transition-all"
+                                 >
+                                     <Play size={18} className="text-red-400" />
+                                     <span className="text-[10px] font-black text-red-400 uppercase tracking-wider">失敗動画を流す</span>
+                                 </button>
+
+                                 <button
+                                     onClick={() => {
+                                         if (confirm("全子機で一斉に【解説動画】を再生しますか？")) {
+                                             sendCommand('PUZZLE_RESULT_COMMENTARY');
+                                         }
+                                     }}
+                                     className="flex flex-col items-center gap-3 p-4 bg-purple-500/5 hover:bg-purple-500/10 border border-purple-500/20 rounded-2xl transition-all"
+                                 >
+                                     <Play size={18} className="text-purple-400" />
+                                     <span className="text-[10px] font-black text-purple-400 uppercase tracking-wider">解説動画を流す</span>
+                                 </button>
+                             </div>
                          </div>
                      </div>
                 </div>

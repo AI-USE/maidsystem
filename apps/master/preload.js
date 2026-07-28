@@ -12,7 +12,9 @@ contextBridge.exposeInMainWorld('electron', {
       'TRIGGER_DISCORD_TTS',
       'SET_EMERGENCY_STATE',
       'CLEAR_MAID_DELIVERY',
-      'CLEAR_ALL_MAID_DELIVERIES'
+      'CLEAR_ALL_MAID_DELIVERIES',
+      'START_RESULTS_LOOP',
+      'STOP_RESULTS_LOOP'
     ];
     if (validChannels.includes(channel)) {
       ipcRenderer.send(channel, data);
