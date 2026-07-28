@@ -8,6 +8,7 @@ const dgram = require('dgram');
 let mainWindow;
 const devices = new Map(); // Indexed by persistent deviceId
 const socketMap = new Map(); // socket.id -> deviceId
+const activeDeliveries = new Map(); // itemCode -> { deviceId, roomCode, itemCode, itemName, intervalId, socketId }
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -115,6 +116,8 @@ io.on('connection', (socket) => {
       const pDeviceId = socketMap.get(sid);
       if (pDeviceId && devices.has(pDeviceId)) {
           devices.get(pDeviceId).activeApp = state.appId;
+          devices.get(pDeviceId).puzzleState = state.puzzleState || 'idle';
+          devices.get(pDeviceId).isPaused = state.isPaused || false;
           updateDeviceList();
       }
   });
@@ -136,6 +139,63 @@ io.on('connection', (socket) => {
             deviceId: pDeviceId,
             text: data.text
         });
+    }
+
+    if (data.text && data.text.includes('OVERRIDE_SUBMITTED:')) {
+        try {
+            const passMatch = data.text.match(/Submitted Passcode proposal:\s*"([^"]+)"/);
+            const passcode = passMatch ? passMatch[1] : '';
+            if (pDeviceId && devices.has(pDeviceId)) {
+                devices.get(pDeviceId).submittedPasscode = passcode;
+                updateDeviceList();
+            }
+        } catch (e) {
+            console.error('Error parsing override passcode proposal:', e);
+        }
+    }
+
+    if (data.text && data.text.includes('MAID_DELIVERY_REQUEST:')) {
+        try {
+            const roomMatch = data.text.match(/Room:\s*"([^"]+)"/);
+            const itemMatch = data.text.match(/Item:\s*"([^"]+)"/);
+            const nameMatch = data.text.match(/ItemName:\s*"([^"]+)"/);
+
+            const roomCode = roomMatch ? roomMatch[1] : '';
+            const itemCode = itemMatch ? itemMatch[1] : '';
+            const itemName = nameMatch ? nameMatch[1] : '';
+
+            if (activeDeliveries.has(itemCode)) {
+                clearInterval(activeDeliveries.get(itemCode).intervalId);
+            }
+
+            const announceText = `配達要請、部屋${roomCode}、物品${itemName}。`;
+            playDiscordTts(announceText);
+
+            const intervalId = setInterval(() => {
+                console.log(`Looping delivery request for item: ${itemCode}`);
+                playDiscordTts(announceText);
+            }, 8000);
+
+            activeDeliveries.set(itemCode, {
+                deviceId: pDeviceId,
+                roomCode,
+                itemCode,
+                itemName,
+                intervalId,
+                socketId: sid
+            });
+
+            if (mainWindow) {
+                mainWindow.webContents.send('MAID_DELIVERY_ACTIVE', {
+                    deviceId: pDeviceId,
+                    roomCode,
+                    itemCode,
+                    itemName
+                });
+            }
+        } catch (e) {
+            console.error('Error parsing delivery request:', e);
+        }
     }
   });
 
@@ -195,7 +255,59 @@ ipcMain.on('REMOVE_DEVICE', (event, deviceId) => {
     }
 });
 
+ipcMain.on('CLEAR_MAID_DELIVERY', (event, { itemCode }) => {
+    console.log(`CLEAR_MAID_DELIVERY received for item: ${itemCode}`);
+    if (activeDeliveries.has(itemCode)) {
+        const delivery = activeDeliveries.get(itemCode);
+        clearInterval(delivery.intervalId);
+
+        // Notify Discord Voice bot
+        playDiscordTts(`物品${delivery.itemName}、配備完了しました。`);
+
+        // Notify connected Child terminal that this item is cleared
+        io.to(delivery.socketId).emit('ADMIN_REMOTE_CTRL', {
+            type: 'MAID_DELIVERY_CLEARED',
+            payload: { itemCode }
+        });
+
+        activeDeliveries.delete(itemCode);
+
+        // Notify master renderer to update lists
+        if (mainWindow) {
+            mainWindow.webContents.send('MAID_DELIVERY_CLEARED_SUCCESS', { itemCode });
+        }
+    }
+});
+
+ipcMain.on('CLEAR_ALL_MAID_DELIVERIES', (event) => {
+    for (const [itemCode, delivery] of activeDeliveries.entries()) {
+        clearInterval(delivery.intervalId);
+    }
+    activeDeliveries.clear();
+    if (mainWindow) {
+        mainWindow.webContents.send('MAID_DELIVERY_RESET');
+    }
+});
+
 ipcMain.on('SEND_REMOTE_COMMAND', (event, { targetId, command }) => {
+  if (command.type === 'PUZZLE_STOP' || command.type === 'PUZZLE_RESTART' || command.type === 'PUZZLE_START') {
+    // Clean all deliveries
+    for (const [itemCode, delivery] of activeDeliveries.entries()) {
+        clearInterval(delivery.intervalId);
+    }
+    activeDeliveries.clear();
+
+    // Reset all submitted passcodes
+    for (const d of devices.values()) {
+        d.submittedPasscode = undefined;
+    }
+    updateDeviceList();
+
+    if (mainWindow) {
+        mainWindow.webContents.send('MAID_DELIVERY_RESET');
+    }
+  }
+
   if (targetId === 'all') {
     io.emit('ADMIN_REMOTE_CTRL', command);
   } else {
@@ -462,4 +574,24 @@ ipcMain.on('SET_EMERGENCY_STATE', (event, { active, name }) => {
 
     console.log('Emergency state cleared on Discord Voice Bot.');
   }
+});
+
+let resultsLoopInterval = null;
+
+ipcMain.on('START_RESULTS_LOOP', (event) => {
+    console.log('START_RESULTS_LOOP received.');
+    if (resultsLoopInterval) clearInterval(resultsLoopInterval);
+
+    playDiscordTts("お疲れ様でした。これより成功者と、おしかった人を発表します。");
+    resultsLoopInterval = setInterval(() => {
+        playDiscordTts("お疲れ様でした。これより成功者と、おしかった人を発表します。");
+    }, 8000);
+});
+
+ipcMain.on('STOP_RESULTS_LOOP', (event) => {
+    console.log('STOP_RESULTS_LOOP received.');
+    if (resultsLoopInterval) {
+        clearInterval(resultsLoopInterval);
+        resultsLoopInterval = null;
+    }
 });

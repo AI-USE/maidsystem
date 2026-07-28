@@ -22,12 +22,14 @@ import {
   ChevronRight,
   Terminal as TerminalIcon,
   ShieldCheck,
-  AlertCircle
+  AlertCircle,
+  Loader2
 } from 'lucide-react';
 import { Setup } from './components/Setup';
 import { OSContext, OSContextType } from './hooks/useOS';
 import { HiddenCamera } from './components/HiddenCamera';
 import { useRemoteControl } from './hooks/useRemoteControl';
+import maidItemsData from './plugins/maid_items.json';
 
 // Web Audio API Synthesizer for high-fidelity sci-fi SFX and loopable ambient BGM
 const synthContextRef: { current: AudioContext | null } = { current: null };
@@ -96,9 +98,10 @@ const playSynthSound = (type: 'tap' | 'type' | 'open' | 'success' | 'bgm') => {
      } else if (type === 'bgm') {
          if (bgmAudioRef.current || bgmOscillatorRef.current) return; // Already running
 
+         const volumeValue = parseFloat(localStorage.getItem('bgmVolume') || '50') / 100;
          const audio = new Audio('bgm.mp3');
          audio.loop = true;
-         audio.volume = 0.5;
+         audio.volume = volumeValue;
          bgmAudioRef.current = audio;
 
          audio.play()
@@ -124,7 +127,7 @@ const playSynthSound = (type: 'tap' | 'type' | 'open' | 'success' | 'bgm') => {
                    filter.type = 'lowpass';
                    filter.frequency.value = 150;
 
-                   gain.gain.setValueAtTime(0.35, ctx.currentTime);
+                   gain.gain.setValueAtTime(0.35 * volumeValue, ctx.currentTime);
 
                    osc.connect(filter);
                    filter.connect(gain);
@@ -155,16 +158,17 @@ const App: React.FC = () => {
 
   // Puzzle State Machine
   // 'idle': Setup / Initial phase
-  // 'preparation': Standard preparation screen with START button
   // 'locked': Fullscreen locked screen overlay, 7-minute timer, clock forced to 23:53:40
   // 'browsing_pdf_1': First PDF displayed. Standard desktop hidden. Footer has only passworded power button.
   // 'boot_loading': Loading sequence screen for GOV-CORE OS
   // 'admin_desktop': High-security Admin Desktop showing 3 big software icons + PDF Viewer 2
   // 'retired': Emergency Retired State
-  const [puzzleState, setPuzzleState] = useState<'idle' | 'preparation' | 'locked' | 'browsing_pdf_1' | 'boot_loading' | 'admin_desktop' | 'retired'>('idle');
+  const [puzzleState, setPuzzleState] = useState<'idle' | 'locked' | 'browsing_pdf_1' | 'boot_loading' | 'admin_desktop' | 'retired'>('idle');
   const [puzzleInput, setPuzzleInput] = useState('');
   const [showPuzzleInputRaw, setShowPuzzleInputRaw] = useState(false);
   const [puzzleError, setPuzzleError] = useState(false);
+  const [isPaused, setIsPaused] = useState(false);
+  const pauseAnnouncementIntervalRef = useRef<any>(null);
 
   const [showRetireConfirm, setShowRetireConfirm] = useState(false);
 
@@ -174,6 +178,7 @@ const App: React.FC = () => {
   // Fullscreen unskippable video state
   const [videoPlaying, setVideoPlaying] = useState(false);
   const [videoProgress, setVideoProgress] = useState(0);
+  const [videoType, setVideoType] = useState<'start' | 'admin' | 'correct' | 'close' | 'failed' | 'commentary' | 'none'>('none');
 
   // Admin Power Button Password Prompt State (using pass_admin)
   const [showPowerPrompt, setShowPowerPrompt] = useState(false);
@@ -188,10 +193,23 @@ const App: React.FC = () => {
   const cam1VideoRef = useRef<HTMLVideoElement>(null);
   const cam2VideoRef = useRef<HTMLVideoElement>(null);
 
-  // Maid controls state mock
-  const [maidActive, setMaidActive] = useState(true);
-  const [tempVal, setTempVal] = useState(21.4);
-  const [entranceLocked, setEntranceLocked] = useState(true);
+  // Maid controls state
+  const [maidRoomInput, setMaidRoomInput] = useState('');
+  const [maidItemInput, setMaidItemInput] = useState('');
+  const [maidDeliveryState, setMaidDeliveryState] = useState<'idle' | 'testing' | 'delivering' | 'error'>('idle');
+  const [maidDeliveryError, setMaidDeliveryError] = useState('');
+  const [maidTimer, setMaidTimer] = useState(0);
+  const [deliveredItemCodes, setDeliveredItems] = useState<string[]>([]);
+
+  useEffect(() => {
+    let interval: any;
+    if (maidTimer > 0) {
+      interval = setInterval(() => {
+        setMaidTimer(prev => prev - 1);
+      }, 1000);
+    }
+    return () => clearInterval(interval);
+  }, [maidTimer]);
 
   // Execution stop state mock (Only allowed <= 20s, exactly 1 attempt)
   const [executionOverrideInput, setExecutionOverrideInput] = useState('');
@@ -240,9 +258,9 @@ const App: React.FC = () => {
   useEffect(() => {
     const handleGlobalClick = () => {
          const shouldPlayBgm =
-           puzzleState !== 'idle' &&
            puzzleState !== 'retired' &&
            !videoPlaying &&
+           !isPaused &&
            timerSeconds !== 0;
 
          if (shouldPlayBgm) {
@@ -263,14 +281,14 @@ const App: React.FC = () => {
          window.removeEventListener('click', handleGlobalClick);
          window.removeEventListener('keydown', handleGlobalKeydown);
     };
-  }, [puzzleState, videoPlaying, timerSeconds]);
+  }, [puzzleState, videoPlaying, timerSeconds, isPaused]);
 
   // Automatic background music (BGM) playback lifecycle control
   useEffect(() => {
     const shouldPlayBgm =
-      puzzleState !== 'idle' &&
       puzzleState !== 'retired' &&
       !videoPlaying &&
+      !isPaused &&
       timerSeconds !== 0;
 
     if (shouldPlayBgm) {
@@ -290,19 +308,52 @@ const App: React.FC = () => {
           bgmOscillatorRef.current = null;
       }
     }
-  }, [puzzleState, videoPlaying, timerSeconds]);
+  }, [puzzleState, videoPlaying, timerSeconds, isPaused]);
+
+  // Handle repeating TTS for pause state
+  useEffect(() => {
+    if (isPaused) {
+      const speakAnnouncementLocal = (text: string) => {
+        if ('speechSynthesis' in window) {
+          window.speechSynthesis.cancel();
+          const utterance = new SpeechSynthesisUtterance(text);
+          utterance.lang = 'ja-JP';
+          utterance.rate = 1.0;
+          window.speechSynthesis.speak(utterance);
+        }
+      };
+
+      speakAnnouncementLocal("現在ゲーム停止中");
+      pauseAnnouncementIntervalRef.current = setInterval(() => {
+         speakAnnouncementLocal("現在ゲーム停止中");
+      }, 5000);
+    } else {
+      if (pauseAnnouncementIntervalRef.current) {
+        clearInterval(pauseAnnouncementIntervalRef.current);
+        pauseAnnouncementIntervalRef.current = null;
+      }
+      if ('speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+      }
+    }
+    return () => {
+      if (pauseAnnouncementIntervalRef.current) {
+        clearInterval(pauseAnnouncementIntervalRef.current);
+      }
+    };
+  }, [isPaused]);
 
   // Master Clock & Override increment
   useEffect(() => {
     const timer = setInterval(() => {
       setTime(new Date());
       setTimeOverride(prev => {
-        if (!prev) return null;
+        if (!prev || isPaused) return prev;
         return new Date(prev.getTime() + 1000);
       });
     }, 1000);
     return () => clearInterval(timer);
-  }, []);
+  }, [isPaused]);
 
   // Delay unskippable video 3 seconds after booting into Admin Desktop
   useEffect(() => {
@@ -312,13 +363,14 @@ const App: React.FC = () => {
       const videoTimeout = setTimeout(() => {
         setVideoPlaying(true);
         setVideoProgress(0);
+        setVideoType('admin');
       }, 3000);
 
       return () => clearTimeout(videoTimeout);
     }
   }, [puzzleState]);
 
-  // Handle mock video playback progress and automatic dismissal
+  // Handle mock video playback progress and automatic dismissal (when videoPlaying)
   useEffect(() => {
     let interval: any;
     if (videoPlaying) {
@@ -327,11 +379,10 @@ const App: React.FC = () => {
           if (prev >= 100) {
             clearInterval(interval);
             setVideoPlaying(false);
-
-            // Transition state machine based on active state
-            if (puzzleState === 'preparation') {
-               setPuzzleState('locked');
+            if (videoType === 'start') {
+              setPuzzleState('locked');
             }
+            setVideoType('none');
             return 100;
           }
           return prev + 1; // 100 steps total, takes ~10 seconds at 100ms interval
@@ -339,22 +390,28 @@ const App: React.FC = () => {
       }, 100);
     }
     return () => clearInterval(interval);
-  }, [videoPlaying, puzzleState]);
+  }, [videoPlaying, videoType]);
 
   // Execution Countdown Timer
   // Starts ticking only after preparation is complete (i.e. 'locked', 'browsing_pdf_1', or 'admin_desktop')
   useEffect(() => {
     let interval: any;
-    if (timerSeconds !== null && timerSeconds > 0 && puzzleState !== 'preparation' && puzzleState !== 'idle') {
+    if (timerSeconds !== null && timerSeconds > 0 && puzzleState !== 'idle' && !isPaused && !videoPlaying) {
       interval = setInterval(() => {
         setTimerSeconds(prev => {
-          if (prev && prev > 0) return prev - 1;
+          if (prev && prev > 1) return prev - 1;
+          if (prev === 1) {
+             // 7 minutes expiration: play direct unskippable video, then black out.
+             setVideoPlaying(true);
+             setVideoProgress(0);
+             return 0;
+          }
           return 0;
         });
       }, 1000);
     }
     return () => clearInterval(interval);
-  }, [timerSeconds, puzzleState]);
+  }, [timerSeconds, puzzleState, isPaused, videoPlaying]);
 
   useEffect(() => {
     if ((window as any).electron) {
@@ -397,12 +454,14 @@ const App: React.FC = () => {
       const savedExit = localStorage.getItem('pass_exit');
       const savedEvent = localStorage.getItem('pass_event');
       const savedAdmin = localStorage.getItem('pass_admin');
-      if (savedExit || savedEvent || savedAdmin) {
+      const savedSetup = localStorage.getItem('pass_setup');
+      if (savedExit || savedEvent || savedAdmin || savedSetup) {
           (window as any).electron.send('UPDATE_CONFIG', {
               passwords: {
                   exit: savedExit || 'MADREST104',
                   event: savedEvent || 'EVT_TRIGGER_99',
-                  admin: savedAdmin || 'ADMIN_DASH'
+                  admin: savedAdmin || 'ADMIN_DASH',
+                  setup: savedSetup || 'ADMIN_SETUP'
               }
           });
       }
@@ -417,9 +476,13 @@ const App: React.FC = () => {
 
   useEffect(() => {
       if (isConnected && isPaired) {
-          emit('APP_STATE_CHANGED', { appId: openAppId || 'IDLE' });
+          emit('APP_STATE_CHANGED', {
+              appId: openAppId || 'IDLE',
+              puzzleState,
+              isPaused
+          });
       }
-  }, [openAppId, isConnected, isPaired]);
+  }, [openAppId, isConnected, isPaired, puzzleState, isPaused]);
 
   const handleRemoteCommand = (cmd: any) => {
     switch (cmd.type) {
@@ -473,16 +536,37 @@ const App: React.FC = () => {
         // Set execution countdown to exactly 7 minutes (420 seconds)
         setTimerSeconds(420);
 
-        setPuzzleState('preparation');
+        // Transition to idle, then start unskippable video
+        setPuzzleState('idle');
         setPuzzleInput('');
         setPuzzleError(false);
         setExecutionAborted(false);
+        setIsPaused(false);
+
+        // Trigger start video playback
+        setVideoPlaying(true);
+        setVideoProgress(0);
+        setVideoType('start');
+        break;
+      }
+      case 'MAID_DELIVERY_CLEARED': {
+        const clearedItemCode = cmd.payload?.itemCode;
+        if (clearedItemCode) {
+          setDeliveredItems(prev => {
+            if (prev.includes(clearedItemCode)) return prev;
+            return [...prev, clearedItemCode];
+          });
+        }
+        setMaidDeliveryState('idle');
+        setMaidRoomInput('');
+        setMaidItemInput('');
         break;
       }
       case 'PUZZLE_STOP':
         setPuzzleState('idle');
         setTimeOverride(null);
         setTimerSeconds(null);
+        setIsPaused(false);
         break;
       case 'PUZZLE_RESTART': {
         const targetTime = new Date();
@@ -490,18 +574,61 @@ const App: React.FC = () => {
         setTimeOverride(targetTime);
         setTimerSeconds(420);
 
-        setPuzzleState('preparation');
+        // Transition to idle, then start unskippable video
+        setPuzzleState('idle');
         setPuzzleInput('');
         setPuzzleError(false);
         setExecutionAborted(false);
         setOverrideSubmitted(false);
         setOverrideText('');
+        setIsPaused(false);
+
+        // Trigger start video playback
+        setVideoPlaying(true);
+        setVideoProgress(0);
+        setVideoType('start');
+        break;
+      }
+      case 'PUZZLE_PAUSE': {
+        setIsPaused(true);
+        break;
+      }
+      case 'PUZZLE_RESUME': {
+        setIsPaused(false);
         break;
       }
       case 'PUZZLE_BROADCAST_VIDEO': {
         playSynthSound('open');
         setVideoPlaying(true);
         setVideoProgress(0);
+        break;
+      }
+      case 'PUZZLE_RESULT_CORRECT': {
+        playSynthSound('open');
+        setVideoPlaying(true);
+        setVideoProgress(0);
+        setVideoType('correct');
+        break;
+      }
+      case 'PUZZLE_RESULT_CLOSE': {
+        playSynthSound('open');
+        setVideoPlaying(true);
+        setVideoProgress(0);
+        setVideoType('close');
+        break;
+      }
+      case 'PUZZLE_RESULT_FAILED': {
+        playSynthSound('open');
+        setVideoPlaying(true);
+        setVideoProgress(0);
+        setVideoType('failed');
+        break;
+      }
+      case 'PUZZLE_RESULT_COMMENTARY': {
+        playSynthSound('open');
+        setVideoPlaying(true);
+        setVideoProgress(0);
+        setVideoType('commentary');
         break;
       }
       case 'PUZZLE_RETIRE': {
@@ -518,6 +645,12 @@ const App: React.FC = () => {
   const handleVerifyPassword = () => {
     if ((window as any).electron) {
       (window as any).electron.send('VERIFY_PASSWORD', exitPassword);
+    }
+  };
+
+  const handleVerifySetupPassword = (password: string) => {
+    if ((window as any).electron) {
+      (window as any).electron.send('VERIFY_SETUP_PASSWORD', password);
     }
   };
 
@@ -553,6 +686,33 @@ const App: React.FC = () => {
     }
   };
 
+  const handleMaidDeliver = () => {
+     if (maidTimer > 0) return;
+
+     if (deliveredItemCodes.includes(maidItemInput)) {
+         setMaidDeliveryError("その物品は公演のなかでは存在しません");
+         setMaidDeliveryState('error');
+         return;
+     }
+
+     setMaidDeliveryState('testing');
+
+     setTimeout(() => {
+         const matched = maidItemsData.find(entry => entry.roomCode === maidRoomInput && entry.itemCode === maidItemInput);
+
+         if (matched) {
+             setMaidDeliveryState('delivering');
+             emit('CONNECTION_MSG', {
+                 text: `MAID_DELIVERY_REQUEST: Room: "${maidRoomInput}", Item: "${maidItemInput}", ItemName: "${matched.name}"`
+             });
+         } else {
+             setMaidDeliveryError("指定された部屋に指定されたものが見つかりませんでした");
+             setMaidDeliveryState('error');
+             setMaidTimer(5);
+         }
+     }, 3000);
+  };
+
   const handleVerifyExecutionOverride = () => {
      // Guard: Only allowed when timerSeconds <= 20 and not yet submitted
      if (timerSeconds === null || timerSeconds > 20 || overrideSubmitted) return;
@@ -582,19 +742,84 @@ const App: React.FC = () => {
      emit('CONNECTION_MSG', { text: 'EMERGENCY_RETIRE_TRIGGERED: Player initiated emergency retirement!' });
   };
 
+  const getVideoTitle = () => {
+    switch (videoType) {
+      case 'start': return "緊急強制システム介入配信";
+      case 'admin': return "管理者ブートシーケンスビデオ";
+      case 'correct': return "ミッションクリア結果映像";
+      case 'close': return "おしい！クリア一歩手前";
+      case 'failed': return "ミッション失敗映像";
+      case 'commentary': return "解説・チュートリアル上映中";
+      default: return "緊急致死処分シークエンス";
+    }
+  };
+
+  const getVideoSub = () => {
+    switch (videoType) {
+      case 'start': return "UNAUTHORIZED OVERRIDE SIGNAL DETECTED";
+      case 'admin': return "GOV-CORE OS ROOT ENGINE BOOT";
+      case 'correct': return "MISSION SUCCESSFUL - LIFE DECODER UNLOCKED";
+      case 'close': return "MISSION CLOSE - SO NEAR AND YET SO FAR";
+      case 'failed': return "MISSION FAILED - SYSTEM RE-RESTRICTED";
+      case 'commentary': return "MISSION COMMENTARY AND TRUTH EXPLANATION";
+      default: return "CRITICAL SYSTEM OVERRIDE PROTOCOL INITIATED";
+    }
+  };
+
+  const getVideoStatus = () => {
+    switch (videoType) {
+      case 'start': return "CRYPTO ENGINE SYNCHRONIZING WITH FLEET...";
+      case 'admin': return "ROOT SHELL INITIALIZED SUCCESSFULLY.";
+      case 'correct': return "ALL TERMINALS ACCESS RESUMED SAFELY.";
+      case 'close': return "PARTIAL SOLUTION DETECTED. RETRY SUSPENDED.";
+      case 'failed': return "EXPIRED DECODING ENGINE DISSOLVED.";
+      case 'commentary': return "COMMENTARY CHANNEL ENGAGED SUCCESSFULLY.";
+      default: return "CRYPTO EXPIRED. DISSOLUTION TIME REACHED 0.";
+    }
+  };
+
   return (
     <OSContext.Provider value={osContextValue}>
     <div className={`relative h-screen w-screen bg-[#050508] text-[#eaeaea] overflow-hidden ${isShaking ? 'animate-shake' : ''} ${isFrozen ? 'pointer-events-none select-none' : ''}`}>
 
-      {/* Screen Complete Blackout Phase once countdown timerSeconds reaches exactly 0 */}
+      {/* Screen Complete Blackout Phase once countdown timerSeconds reaches exactly 0 and video finished */}
       <AnimatePresence>
-          {timerSeconds === 0 && !executionAborted && (
+          {timerSeconds === 0 && !executionAborted && !videoPlaying && (
                <motion.div
                  initial={{ opacity: 0 }}
                  animate={{ opacity: 1 }}
                  className="fixed inset-0 z-[10000] bg-[#000000] flex flex-col items-center justify-center text-transparent cursor-none select-none pointer-events-none"
                >
                     [SYSTEM_TERMINATED]
+               </motion.div>
+          )}
+      </AnimatePresence>
+
+      {/* Pause Mode Overlay Screen */}
+      <AnimatePresence>
+          {isPaused && (
+               <motion.div
+                 initial={{ opacity: 0 }}
+                 animate={{ opacity: 1 }}
+                 className="fixed inset-0 z-[9600] bg-[#0d0d0f]/95 flex flex-col items-center justify-center p-6 text-center select-none"
+               >
+                    <div className="absolute inset-0 bg-[radial-gradient(rgba(234,179,8,0.15)_1px,transparent_1px)] [background-size:16px_16px]" />
+                    <motion.div
+                      initial={{ scale: 0.9, opacity: 0 }}
+                      animate={{ scale: 1, opacity: 1 }}
+                      className="max-w-md w-full glass-panel p-10 border-yellow-500/30 bg-black/80 flex flex-col items-center gap-6 shadow-[0_0_50px_rgba(234,179,8,0.2)]"
+                    >
+                         <AlertCircle className="text-yellow-500 animate-pulse" size={64} />
+                         <div>
+                              <h2 className="text-xl font-black tracking-[0.2em] text-white uppercase">SYSTEM_PAUSED</h2>
+                              <p className="text-[11px] text-yellow-500 uppercase font-mono mt-1 tracking-widest font-bold">現在ゲーム停止中</p>
+                         </div>
+                         <div className="p-4 rounded-xl bg-yellow-950/20 border border-yellow-900/30 text-[11px] leading-relaxed text-yellow-400 font-mono text-left w-full">
+                              ⚠️ 【システム一時停止】:
+                              ただいま安全管理のため進行を一時的に中断しています。
+                              再開されるまでそのままお待ちください。
+                         </div>
+                    </motion.div>
                </motion.div>
           )}
       </AnimatePresence>
@@ -628,43 +853,6 @@ const App: React.FC = () => {
       </AnimatePresence>
 
       <AnimatePresence>
-          {/* Phase 0: Preparation Screen with START button */}
-          {puzzleState === 'preparation' && (
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                className="fixed inset-0 z-[500] bg-[#050508] flex flex-col items-center justify-center p-6 text-center"
-              >
-                  <div className="scanlines z-0" />
-                  <motion.div
-                    initial={{ scale: 0.95, y: 15 }}
-                    animate={{ scale: 1, y: 0 }}
-                    className="w-full max-w-md glass-panel p-10 rounded-[32px] border-red-900/30 bg-black/40 relative z-10 flex flex-col items-center shadow-[0_32px_64px_-12px_rgba(0,0,0,0.9)]"
-                  >
-                      <div className="w-16 h-16 bg-red-950/40 rounded-[24px] flex items-center justify-center mb-8 border border-red-500/30 animate-pulse">
-                          <Cpu className="text-red-500" size={32} />
-                      </div>
-
-                      <h2 className="text-xl font-black tracking-[0.3em] text-white uppercase mb-2">GOV-CORE OS</h2>
-                      <p className="text-[10px] text-red-500/80 uppercase tracking-[0.1em] font-bold mb-10 max-w-xs leading-relaxed">
-                          準備完了。ミッションを開始するにはSTARTボタンを押してください。
-                      </p>
-
-                      <button
-                          onClick={() => {
-                              setVideoPlaying(true);
-                              setVideoProgress(0);
-                              emit('CONNECTION_MSG', { text: 'GAME_START_TRIGGERED: Game Start video signal.' });
-                          }}
-                          className="w-full py-5 rounded-2xl bg-red-900 hover:bg-red-800 text-white font-black text-sm uppercase tracking-[0.3em] transition-all flex items-center justify-center gap-2 shadow-[0_0_30px_rgba(239,68,68,0.3)] hover:scale-[1.02]"
-                      >
-                          START
-                      </button>
-                  </motion.div>
-              </motion.div>
-          )}
-
           {/* Phase 1: Custom restricted passcode screen */}
           {puzzleState === 'locked' && (
               <motion.div
@@ -793,7 +981,7 @@ const App: React.FC = () => {
                   </div>
 
                   <div className="absolute top-10 right-10 flex items-center gap-2 px-3 py-1 bg-red-950/40 border border-red-500/30 rounded text-red-500 font-bold text-[10px] uppercase tracking-widest animate-pulse">
-                      ● LIVE RECEPTION
+                      ● EMERGENCY OVERRIDE RECEPTION
                   </div>
 
                   {/* Main Player Screen Container simulating real security playback */}
@@ -811,16 +999,15 @@ const App: React.FC = () => {
                             </motion.div>
 
                             <div>
-                                 <h1 className="text-2xl font-black text-white tracking-[0.3em] uppercase">緊急強制システム介入配信</h1>
+                                 <h1 className="text-2xl font-black text-white tracking-[0.3em] uppercase">{getVideoTitle()}</h1>
                                  <p className="text-xs text-red-500/80 uppercase font-bold tracking-widest mt-2">
-                                      UNAUTHORIZED OVERRIDE SIGNAL DETECTED
+                                      {getVideoSub()}
                                  </p>
                             </div>
 
                             <div className="space-y-2 p-6 bg-black/60 rounded-2xl border border-white/5 text-left text-[11px] leading-relaxed text-white/60">
-                                 <div>[SYSTEM_STATUS] CRYPTO ENGINE SYNCHRONIZING WITH FLEET...</div>
-                                 <div>[TELEMETRY] CELL CORE DISSOLUTION TIME REMAINING: {Math.max(0, Math.floor((100 - videoProgress) / 10))}s</div>
-                                 <div className="text-red-500 font-bold animate-pulse">[WARN] INTERACTION IS TEMPORARILY SUSPENDED DURING FEED TRANSMISSION.</div>
+                                 <div>[SYSTEM_STATUS] {getVideoStatus()}</div>
+                                 <div className="text-red-500 font-bold animate-pulse">[WARN] TERMINAL INTERACTION IS RESTRICTED.</div>
                             </div>
                        </div>
 
@@ -835,7 +1022,7 @@ const App: React.FC = () => {
                   </div>
 
                   <div className="mt-8 text-center text-xs text-white/30 uppercase tracking-[0.2em] animate-pulse">
-                       ※ この重要なビデオ配信が終了するまで、システム操作は一切ロックされます。
+                       ※ 処分完了までシステムは完全に強制ロックされます。
                   </div>
               </motion.div>
           )}
@@ -879,7 +1066,7 @@ const App: React.FC = () => {
       />
 
       {/* 1. Status Bar (Top) */}
-      <header className="absolute top-0 left-0 w-full h-12 flex items-center justify-between px-8 z-50 bg-black/40 border-b border-red-950/20 backdrop-blur-md">
+      <header className={`absolute top-0 left-0 w-full h-12 flex items-center justify-between px-8 z-50 bg-black/40 border-b border-red-950/20 backdrop-blur-md ${puzzleState === 'browsing_pdf_1' ? 'hidden' : ''}`}>
         <div className="absolute top-4 left-6 flex items-center gap-2 pointer-events-none opacity-80">
             <div className="w-1.5 h-1.5 rounded-full bg-red-600 animate-pulse" />
             <span className="text-[9px] font-black text-red-600 tracking-[0.2em]">SECURE_GRID</span>
@@ -933,30 +1120,26 @@ const App: React.FC = () => {
       </header>
 
       {/* 2. Main Area (Center) */}
-      <main className="relative h-screen w-full flex items-center justify-center p-20 z-10 pt-20 pb-28">
+      <main className={`relative h-screen w-full flex items-center justify-center z-10 ${puzzleState === 'browsing_pdf_1' ? 'p-0 pt-0 pb-0' : 'p-20 pt-20 pb-28'}`}>
 
-        {/* State A: browsing_pdf_1 (Only First Scrollable PDF File) */}
+        {/* State A: browsing_pdf_1 (Fullscreen absolute layout covering everything) */}
         {puzzleState === 'browsing_pdf_1' && (
-            <div className="w-full h-full flex gap-8">
-                {/* Real embedded PDF 1 viewport */}
-                <div className="flex-1 glass-panel p-2 border-red-950/20 bg-black/50 overflow-hidden flex flex-col relative">
-                     <iframe
-                       src="/documents/doc1.pdf"
-                       className="w-full h-full border-0 rounded-2xl bg-zinc-950"
-                       title="処刑装置起動手順_LOG_832.pdf"
-                     />
-                </div>
+            <div className="fixed inset-0 z-50 bg-black flex flex-col">
+                {/* Embedded PDF 1 viewport occupying 100% of the screen */}
+                <iframe
+                   src="/documents/doc1.pdf"
+                   className="w-full h-full border-0 bg-black"
+                   title="処刑装置起動手順_LOG_832.pdf"
+                />
 
-                {/* PDF Right panel info */}
-                <div className="w-80 flex flex-col gap-6">
-                     <div className="glass-panel p-6 border-red-950/20 bg-black/40 text-center flex flex-col items-center justify-center h-full">
-                          <ShieldAlert className="text-red-500 animate-pulse mb-4" size={40} />
-                          <h4 className="text-xs font-black tracking-widest uppercase mb-2 text-white">避難勧告発令</h4>
-                          <p className="text-[10px] text-white/50 leading-relaxed uppercase">
-                              施設内のすべての生命体は、速やかに退出準備を開始してください。システム制御は一時的に制限されています。
-                          </p>
-                     </div>
-                </div>
+                {/* Hidden floating click trigger at the top right to open setup admin prompt */}
+                <button
+                   onClick={() => setShowPowerPrompt(true)}
+                   className="absolute top-4 right-4 p-3 bg-red-950/40 border border-red-500/20 hover:bg-red-950/80 rounded-full text-red-500 transition-all z-50 flex items-center justify-center"
+                   title="管理者メニュー起動"
+                >
+                     <Power size={18} />
+                </button>
             </div>
         )}
 
@@ -1111,43 +1294,73 @@ const App: React.FC = () => {
 
                                   {/* Mock Maid Control System App */}
                                   {openAppId === 'maid' && (
-                                      <div className="max-w-4xl mx-auto space-y-8 py-6 font-mono">
-                                           <div className="grid grid-cols-3 gap-6">
-                                                <div className="glass-panel p-6 border-white/10 bg-white/5 rounded-2xl">
-                                                     <div className="text-xs text-white/40 uppercase mb-2">メイド稼働状況</div>
-                                                     <div className={`text-2xl font-black ${maidActive ? 'text-green-400' : 'text-red-500'}`}>
-                                                          {maidActive ? '通常運転 (ACTIVE)' : '緊急停止中'}
-                                                     </div>
-                                                     <button
-                                                       onClick={() => setMaidActive(!maidActive)}
-                                                       className="mt-6 w-full py-2.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-bold uppercase tracking-wider transition-colors"
-                                                     >
-                                                          トグル切り替え
-                                                     </button>
+                                      <div className="max-w-md mx-auto space-y-6 py-6 font-mono text-center">
+                                           <div className="w-16 h-16 bg-red-950/40 rounded-[20px] flex items-center justify-center mx-auto border border-red-500/20 animate-pulse">
+                                               <Cpu className="text-red-500" size={32} />
+                                           </div>
+                                           <div>
+                                                <h4 className="text-sm font-bold uppercase tracking-widest text-white">メイド配達コントロールシステム</h4>
+                                                <p className="text-[10px] text-white/40 mt-1 uppercase">配達を要請する物品情報と部屋コードを入力してください。</p>
+                                           </div>
+
+                                           <div className="space-y-4 text-left">
+                                                <div>
+                                                     <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest block mb-1">物品がある部屋コード</label>
+                                                     <input
+                                                          type="text"
+                                                          disabled={maidDeliveryState === 'testing' || maidDeliveryState === 'delivering' || maidTimer > 0}
+                                                          placeholder="例: RM101"
+                                                          className="w-full bg-black/60 border border-white/10 rounded-xl px-4 py-3 text-sm font-mono text-white outline-none focus:border-red-900 transition-colors uppercase"
+                                                          value={maidRoomInput}
+                                                          onChange={(e) => setMaidRoomInput(e.target.value.toUpperCase())}
+                                                     />
                                                 </div>
 
-                                                <div className="glass-panel p-6 border-white/10 bg-white/5 rounded-2xl">
-                                                     <div className="text-xs text-white/40 uppercase mb-2">隔壁エリア温度</div>
-                                                     <div className="text-2xl font-black text-white">{tempVal.toFixed(1)}°C</div>
-                                                     <div className="flex gap-4 mt-6">
-                                                          <button onClick={() => setTempVal(prev => prev - 0.5)} className="flex-1 py-2.5 bg-white/5 border border-white/10 rounded-xl text-sm hover:bg-white/10 transition-colors">-</button>
-                                                          <button onClick={() => setTempVal(prev => prev + 0.5)} className="flex-1 py-2.5 bg-white/5 border border-white/10 rounded-xl text-sm hover:bg-white/10 transition-colors">+</button>
-                                                     </div>
-                                                </div>
-
-                                                <div className="glass-panel p-6 border-white/10 bg-white/5 rounded-2xl">
-                                                     <div className="text-xs text-white/40 uppercase mb-2">エントランスゲート</div>
-                                                     <div className={`text-2xl font-black ${entranceLocked ? 'text-red-500' : 'text-green-400'}`}>
-                                                          {entranceLocked ? 'ロック中 (LOCKED)' : '開放 (UNLOCKED)'}
-                                                     </div>
-                                                     <button
-                                                       onClick={() => setEntranceLocked(!entranceLocked)}
-                                                       className="mt-6 w-full py-2.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-bold uppercase tracking-wider transition-colors"
-                                                     >
-                                                          ロック切替
-                                                     </button>
+                                                <div>
+                                                     <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest block mb-1">物品コード</label>
+                                                     <input
+                                                          type="text"
+                                                          disabled={maidDeliveryState === 'testing' || maidDeliveryState === 'delivering' || maidTimer > 0}
+                                                          placeholder="例: ITEM01"
+                                                          className="w-full bg-black/60 border border-white/10 rounded-xl px-4 py-3 text-sm font-mono text-white outline-none focus:border-red-900 transition-colors uppercase"
+                                                          value={maidItemInput}
+                                                          onChange={(e) => setMaidItemInput(e.target.value.toUpperCase())}
+                                                     />
                                                 </div>
                                            </div>
+
+                                           {maidDeliveryState === 'testing' && (
+                                                <div className="p-4 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center gap-2">
+                                                     <Loader2 size={16} className="text-white/60 animate-spin" />
+                                                     <span className="text-xs text-white/60">データ照合中（3秒待機）...</span>
+                                                </div>
+                                           )}
+
+                                           {maidDeliveryState === 'delivering' && (
+                                                <div className="p-4 rounded-xl bg-green-950/20 border border-green-900/30 flex items-center justify-center gap-2">
+                                                     <div className="w-1.5 h-1.5 rounded-full bg-green-400 animate-ping" />
+                                                     <span className="text-xs text-green-400 font-bold uppercase tracking-widest">現在、メイドが物品を配達中です。</span>
+                                                </div>
+                                           )}
+
+                                           {maidDeliveryState === 'error' && (
+                                                <div className="p-4 rounded-xl bg-red-950/20 border border-red-900/30 flex flex-col gap-1 items-center justify-center text-red-400">
+                                                     <AlertCircle size={20} />
+                                                     <span className="text-xs font-bold uppercase tracking-widest">エラー: {maidDeliveryError}</span>
+                                                </div>
+                                           )}
+
+                                           <button
+                                                disabled={!maidRoomInput || !maidItemInput || maidDeliveryState === 'testing' || maidDeliveryState === 'delivering' || maidTimer > 0}
+                                                onClick={handleMaidDeliver}
+                                                className={`w-full py-3.5 rounded-xl font-bold uppercase text-[10px] tracking-widest transition-colors ${
+                                                    (!maidRoomInput || !maidItemInput || maidDeliveryState === 'testing' || maidDeliveryState === 'delivering' || maidTimer > 0)
+                                                    ? 'bg-white/5 border border-white/5 text-white/20 cursor-not-allowed'
+                                                    : 'bg-red-950/40 hover:bg-red-950/60 border border-red-900/40 text-red-400'
+                                                }`}
+                                           >
+                                                {maidTimer > 0 ? `入力制限中: あと ${maidTimer} 秒` : '配達を要請'}
+                                           </button>
                                       </div>
                                   )}
 
@@ -1289,30 +1502,27 @@ const App: React.FC = () => {
       </main>
 
       {/* 3. Taskbar & Dock (Bottom) */}
-      <footer className="absolute bottom-8 left-0 w-full flex justify-center z-50">
+      <footer className={`absolute bottom-8 left-0 w-full flex justify-center z-50 ${puzzleState === 'browsing_pdf_1' ? 'hidden' : ''}`}>
         <nav className="glass-panel px-6 py-3.5 flex items-center gap-4 border-white/5 bg-black/60">
-
-          {/* Phase A: When browsing PDF 1 - show ONLY the Power (shutdown) button */}
-          {puzzleState === 'browsing_pdf_1' ? (
-              <button
-                onClick={() => setShowPowerPrompt(true)}
-                className="p-3.5 rounded-2xl text-red-500/80 hover:text-red-400 hover:bg-red-500/10 transition-all shadow-[0_0_15px_rgba(239,68,68,0.1)] flex items-center justify-center"
-              >
-                <Power size={22} />
-              </button>
-          ) : (
-              /* Phase B: Default dock (Exit modal triggers power) */
+              {/* Phase B: Default dock (Exit modal triggers power) */}
               <>
                   <div className="text-[9px] font-bold text-white/30 uppercase tracking-[0.2em] px-2 font-mono">GOV-CORE DOCK</div>
                   <div className="w-[1px] h-6 bg-white/10 mx-1" />
                   <button
-                    onClick={() => setShowExitModal(true)}
+                    onClick={() => {
+                      if (puzzleState === 'admin_desktop') {
+                         playSynthSound('tap');
+                         alert("これは謎には関係ありません");
+                      } else {
+                         playSynthSound('open');
+                         setShowExitModal(true);
+                      }
+                    }}
                     className="p-3 rounded-2xl text-white/20 hover:text-red-500 hover:bg-red-500/10 transition-all"
                   >
                     <Power size={20} />
                   </button>
               </>
-          )}
         </nav>
       </footer>
 
@@ -1501,24 +1711,29 @@ const App: React.FC = () => {
               <h2 className="text-lg font-bold mb-2 tracking-widest uppercase">システム制限</h2>
               <p className="text-xs text-white/40 mb-8 uppercase tracking-tighter">許可された担当者のみアクセス可能です</p>
 
-              <div className="relative mb-2">
-                <input
-                    type={showPasswordRaw ? "text" : "password"}
-                    autoFocus
-                    className={`w-full bg-white/5 border rounded-xl px-4 py-4 text-center outline-none focus:border-white/30 transition-all text-xl tracking-[0.5em] ${passwordError ? 'border-red-500' : 'border-white/10'}`}
-                    value={exitPassword}
-                    onChange={(e) => {
-                        setExitPassword(e.target.value);
-                        if (passwordError) setPasswordError(false);
-                    }}
-                    onKeyDown={(e) => e.key === 'Enter' && handleVerifyPassword()}
-                />
-                <button
-                    onClick={() => setShowPasswordRaw(!showPasswordRaw)}
-                    className="absolute right-4 top-1/2 -translate-y-1/2 p-2 text-white/20 hover:text-white transition-colors"
-                >
-                    {showPasswordRaw ? <EyeOff size={16} /> : <Eye size={16} />}
-                </button>
+              <div className="space-y-4">
+                  <div>
+                    <label className="text-[10px] uppercase tracking-widest text-white/40 block text-left mb-1 ml-1">管理者ツール起動または終了用パスコード</label>
+                    <div className="relative">
+                      <input
+                          type={showPasswordRaw ? "text" : "password"}
+                          autoFocus
+                          className={`w-full bg-white/5 border rounded-xl px-4 py-3 text-center outline-none focus:border-white/30 transition-all text-sm font-mono tracking-[0.2em] ${passwordError ? 'border-red-500' : 'border-white/10'}`}
+                          value={exitPassword}
+                          onChange={(e) => {
+                              setExitPassword(e.target.value);
+                              if (passwordError) setPasswordError(false);
+                          }}
+                          onKeyDown={(e) => e.key === 'Enter' && handleVerifyPassword()}
+                      />
+                      <button
+                          onClick={() => setShowPasswordRaw(!showPasswordRaw)}
+                          className="absolute right-4 top-1/2 -translate-y-1/2 p-2 text-white/20 hover:text-white transition-colors"
+                      >
+                          {showPasswordRaw ? <EyeOff size={16} /> : <Eye size={16} />}
+                      </button>
+                    </div>
+                  </div>
               </div>
 
               <div className="h-4 mb-4">
@@ -1541,7 +1756,19 @@ const App: React.FC = () => {
                   キャンセル
                 </button>
                 <button
-                    onClick={handleVerifyPassword}
+                    onClick={() => {
+                       // Check custom setup password first
+                       const customSetup = localStorage.getItem('pass_setup') || 'ADMIN_SETUP';
+                       if (exitPassword === customSetup) {
+                           playSynthSound('success');
+                           setShowSetup(true);
+                           setShowExitModal(false);
+                           setExitPassword('');
+                           setPasswordError(false);
+                       } else {
+                           handleVerifyPassword();
+                       }
+                    }}
                     className="flex-1 py-3 rounded-xl bg-white text-black font-bold text-xs uppercase tracking-widest hover:bg-white/90 transition-all"
                 >
                   実行

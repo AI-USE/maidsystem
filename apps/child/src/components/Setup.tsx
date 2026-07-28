@@ -16,8 +16,10 @@ export const Setup: React.FC<SetupProps> = ({ onComplete }) => {
   const [passwords, setPasswords] = useState({
       exit: localStorage.getItem('pass_exit') || 'MADREST104',
       event: localStorage.getItem('pass_event') || 'EVT_TRIGGER_99',
-      admin: localStorage.getItem('pass_admin') || 'ADMIN_DASH'
+      admin: localStorage.getItem('pass_admin') || 'ADMIN_DASH',
+      setup: localStorage.getItem('pass_setup') || 'ADMIN_SETUP'
   });
+  const [bgmVolume, setBgmVolume] = useState<number>(parseInt(localStorage.getItem('bgmVolume') || '50'));
 
   const testConnection = async () => {
     setTestStatus('testing');
@@ -62,13 +64,20 @@ export const Setup: React.FC<SetupProps> = ({ onComplete }) => {
           localStorage.setItem('pass_exit', passwords.exit);
           localStorage.setItem('pass_event', passwords.event);
           localStorage.setItem('pass_admin', passwords.admin);
+          localStorage.setItem('pass_setup', passwords.setup);
+          localStorage.setItem('bgmVolume', String(bgmVolume));
 
           // Clear pairing on fresh setup to force re-approval if IP changed
           localStorage.removeItem('isPaired');
 
           if ((window as any).electron) {
               (window as any).electron.send('UPDATE_CONFIG', {
-                  passwords,
+                  passwords: {
+                      exit: passwords.exit,
+                      event: passwords.event,
+                      admin: passwords.admin,
+                      setup: passwords.setup
+                  },
                   kiosk: kioskEnabled
               });
           }
@@ -179,7 +188,7 @@ export const Setup: React.FC<SetupProps> = ({ onComplete }) => {
                         />
                     </div>
                     <div>
-                        <label className="text-[10px] uppercase tracking-widest text-white/40 ml-2">イベント用</label>
+                        <label className="text-[10px] uppercase tracking-widest text-white/40 ml-2">イベント画面ロック解除用</label>
                         <input
                             type={showPasswords ? "text" : "password"}
                             className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 outline-none focus:border-white/30 transition-all font-mono"
@@ -188,13 +197,38 @@ export const Setup: React.FC<SetupProps> = ({ onComplete }) => {
                         />
                     </div>
                     <div>
-                        <label className="text-[10px] uppercase tracking-widest text-white/40 ml-2">管理者用</label>
+                        <label className="text-[10px] uppercase tracking-widest text-white/40 ml-2">管理者用イベント解除用（電源ボタン用）</label>
                         <input
                             type={showPasswords ? "text" : "password"}
                             className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 outline-none focus:border-white/30 transition-all font-mono"
                             value={passwords.admin}
                             onChange={(e) => setPasswords({...passwords, admin: e.target.value})}
                         />
+                    </div>
+                    <div>
+                        <label className="text-[10px] uppercase tracking-widest text-white/40 ml-2">管理者ツール起動用（設定画面用）</label>
+                        <input
+                            type={showPasswords ? "text" : "password"}
+                            className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 outline-none focus:border-white/30 transition-all font-mono"
+                            value={passwords.setup}
+                            onChange={(e) => setPasswords({...passwords, setup: e.target.value})}
+                        />
+                    </div>
+
+                    <div className="pt-4 border-t border-white/5">
+                        <div className="flex justify-between items-center mb-2 px-2">
+                            <label className="text-[10px] uppercase tracking-widest text-white/40">BGM音量設定</label>
+                            <span className="text-xs text-white/80 font-mono font-bold">{bgmVolume}%</span>
+                        </div>
+                        <input
+                            type="range" min="0" max="100" step="5"
+                            className="w-full accent-white opacity-60 hover:opacity-100 transition-opacity"
+                            value={bgmVolume}
+                            onChange={(e) => setBgmVolume(parseInt(e.target.value))}
+                        />
+                        <p className="text-[9px] text-white/30 uppercase mt-2 leading-relaxed text-left px-2 font-mono">
+                            ※ 【推奨】音声はヘッドホン出力から原則として流れるよう構成されています。
+                        </p>
                     </div>
                 </div>
             </div>

@@ -1,0 +1,5 @@
+[
+  { "roomCode": "RM101", "itemCode": "ITEM01", "name": "極秘ディスク" },
+  { "roomCode": "RM102", "itemCode": "ITEM02", "name": "制御キー" },
+  { "roomCode": "RM103", "itemCode": "ITEM03", "name": "暗号解析チップ" }
+]
