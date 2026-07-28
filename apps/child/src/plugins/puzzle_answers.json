@@ -1,0 +1,10 @@
+{
+  "correctPasscodes": [
+    "OVERRIDE_SUCCESS",
+    "EXEC_STOP_99"
+  ],
+  "closePasscodes": [
+    "OVERRIDE_CLOSE",
+    "EXEC_STOP_98"
+  ]
+}

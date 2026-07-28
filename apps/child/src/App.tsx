@@ -30,6 +30,7 @@ import { OSContext, OSContextType } from './hooks/useOS';
 import { HiddenCamera } from './components/HiddenCamera';
 import { useRemoteControl } from './hooks/useRemoteControl';
 import maidItemsData from './plugins/maid_items.json';
+import puzzleAnswersData from './plugins/puzzle_answers.json';
 
 // Web Audio API Synthesizer for high-fidelity sci-fi SFX and loopable ambient BGM
 const synthContextRef: { current: AudioContext | null } = { current: null };
@@ -200,6 +201,10 @@ const App: React.FC = () => {
   const [maidDeliveryError, setMaidDeliveryError] = useState('');
   const [maidTimer, setMaidTimer] = useState(0);
   const [deliveredItemCodes, setDeliveredItems] = useState<string[]>([]);
+
+  // Results & Post-Commentary State
+  const [gameResult, setGameResult] = useState<'none' | 'correct' | 'close' | 'failed'>('none');
+  const [postCommentaryScreen, setPostCommentaryScreen] = useState<'none' | 'success' | 'failed'>('none');
 
   useEffect(() => {
     let interval: any;
@@ -382,6 +387,14 @@ const App: React.FC = () => {
             if (videoType === 'start') {
               setPuzzleState('locked');
             }
+            if (videoType === 'commentary') {
+              // Transition to exit lock screen
+              if (gameResult === 'correct') {
+                setPostCommentaryScreen('success');
+              } else {
+                setPostCommentaryScreen('failed');
+              }
+            }
             setVideoType('none');
             return 100;
           }
@@ -390,7 +403,7 @@ const App: React.FC = () => {
       }, 100);
     }
     return () => clearInterval(interval);
-  }, [videoPlaying, videoType]);
+  }, [videoPlaying, videoType, gameResult]);
 
   // Execution Countdown Timer
   // Starts ticking only after preparation is complete (i.e. 'locked', 'browsing_pdf_1', or 'admin_desktop')
@@ -542,6 +555,8 @@ const App: React.FC = () => {
         setPuzzleError(false);
         setExecutionAborted(false);
         setIsPaused(false);
+        setGameResult('none');
+        setPostCommentaryScreen('none');
 
         // Trigger start video playback
         setVideoPlaying(true);
@@ -567,6 +582,8 @@ const App: React.FC = () => {
         setTimeOverride(null);
         setTimerSeconds(null);
         setIsPaused(false);
+        setGameResult('none');
+        setPostCommentaryScreen('none');
         break;
       case 'PUZZLE_RESTART': {
         const targetTime = new Date();
@@ -582,6 +599,8 @@ const App: React.FC = () => {
         setOverrideSubmitted(false);
         setOverrideText('');
         setIsPaused(false);
+        setGameResult('none');
+        setPostCommentaryScreen('none');
 
         // Trigger start video playback
         setVideoPlaying(true);
@@ -720,8 +739,24 @@ const App: React.FC = () => {
      setOverrideSubmitted(true);
      setOverrideText("処刑停止を申請しました。残り時間をお待ちください。");
 
-     // Send password proposal to Master Console
-     emit('CONNECTION_MSG', { text: `OVERRIDE_SUBMITTED: Submitted Passcode proposal: "${executionOverrideInput}"` });
+     // Check passcode proposal
+     const cleanInput = executionOverrideInput.trim().toUpperCase();
+     const correctList = puzzleAnswersData.correctPasscodes || [];
+     const closeList = puzzleAnswersData.closePasscodes || [];
+
+     let outcome = 'failed';
+     if (correctList.some(p => p.toUpperCase() === cleanInput)) {
+         outcome = 'correct';
+     } else if (closeList.some(p => p.toUpperCase() === cleanInput)) {
+         outcome = 'close';
+     }
+
+     setGameResult(outcome as any);
+
+     // Send password proposal to Master Console with determined outcome
+     emit('CONNECTION_MSG', {
+         text: `OVERRIDE_SUBMITTED: Submitted Passcode proposal: "${executionOverrideInput}" [Result: ${outcome}]`
+     });
   };
 
   if (showSetup) {
@@ -791,6 +826,63 @@ const App: React.FC = () => {
                  className="fixed inset-0 z-[10000] bg-[#000000] flex flex-col items-center justify-center text-transparent cursor-none select-none pointer-events-none"
                >
                     [SYSTEM_TERMINATED]
+               </motion.div>
+          )}
+      </AnimatePresence>
+
+      {/* Post Commentary Exit Screen Overlays */}
+      <AnimatePresence>
+          {postCommentaryScreen === 'success' && (
+               <motion.div
+                 initial={{ opacity: 0 }}
+                 animate={{ opacity: 1 }}
+                 className="fixed inset-0 z-[10100] bg-black flex flex-col items-center justify-center p-6 text-center select-none"
+               >
+                    <div className="absolute inset-0 bg-[radial-gradient(rgba(34,197,94,0.15)_1px,transparent_1px)] [background-size:24px_24px] pointer-events-none z-0" />
+                    <motion.div
+                      initial={{ scale: 0.9, opacity: 0 }}
+                      animate={{ scale: 1, opacity: 1 }}
+                      className="max-w-md w-full glass-panel p-10 border-green-500/30 bg-black/80 flex flex-col items-center gap-6 shadow-[0_0_50px_rgba(34,197,94,0.2)] z-10"
+                    >
+                         <CheckCircle2 className="text-green-500 animate-bounce" size={64} />
+                         <div>
+                              <h2 className="text-xl font-black tracking-[0.2em] text-white uppercase">MISSION_SUCCESSFUL</h2>
+                              <p className="text-sm text-green-400 font-mono mt-1 tracking-widest font-black">脱出成功</p>
+                         </div>
+                         <div className="p-4 rounded-xl bg-green-950/20 border border-green-900/30 text-[11px] leading-relaxed text-green-400 font-mono text-left w-full">
+                              🎉 【おめでとうございます！】:
+                              制限時間内に正しい処刑停止コードを検知・送信し、致死処分シーケンスの完全オーバーライドに成功しました！
+                              本ミッションは無事完了しました。
+                         </div>
+                    </motion.div>
+               </motion.div>
+          )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+          {postCommentaryScreen === 'failed' && (
+               <motion.div
+                 initial={{ opacity: 0 }}
+                 animate={{ opacity: 1 }}
+                 className="fixed inset-0 z-[10100] bg-black flex flex-col items-center justify-center p-6 text-center select-none"
+               >
+                    <div className="absolute inset-0 bg-[radial-gradient(rgba(239,68,68,0.15)_1px,transparent_1px)] [background-size:24px_24px] pointer-events-none z-0" />
+                    <motion.div
+                      initial={{ scale: 0.9, opacity: 0 }}
+                      animate={{ scale: 1, opacity: 1 }}
+                      className="max-w-md w-full glass-panel p-10 border-red-500/30 bg-black/80 flex flex-col items-center gap-6 shadow-[0_0_50px_rgba(239,68,68,0.2)] z-10"
+                    >
+                         <ShieldAlert className="text-red-500 animate-pulse" size={64} />
+                         <div>
+                              <h2 className="text-xl font-black tracking-[0.2em] text-white uppercase">MISSION_FAILED</h2>
+                              <p className="text-sm text-red-500 font-mono mt-1 tracking-widest font-black">脱出失敗</p>
+                         </div>
+                         <div className="p-4 rounded-xl bg-red-950/20 border border-red-900/30 text-[11px] leading-relaxed text-red-400 font-mono text-left w-full">
+                              🚨 【脱出失敗】:
+                              正しい処刑停止コードが入力されなかったか、制限時間内にシステムをオーバーライドできませんでした。
+                              生命維持保護セッションは終了しました。
+                         </div>
+                    </motion.div>
                </motion.div>
           )}
       </AnimatePresence>
