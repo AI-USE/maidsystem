@@ -62,6 +62,7 @@ const App: React.FC = () => {
   // Local synchronized puzzle timer countdown state
   const [puzzleTimer, setPuzzleTimer] = useState<number | null>(null);
   const [puzzleTimerPaused, setPuzzleTimerPaused] = useState(false);
+  const [masterPuzzlePhase, setMasterPuzzlePhase] = useState<'idle' | 'prepared' | 'playing' | 'paused' | 'waiting_commentary' | 'commentary_playing'>('idle');
 
   const [retiredDeviceIds, setRetiredDeviceIds] = useState<string[]>([]);
   const retiredDeviceIdsRef = React.useRef<string[]>([]);
@@ -127,78 +128,86 @@ const App: React.FC = () => {
     syncDiscordConfig();
   }, [discordToken, discordVoiceChannel]);
 
-  // Synchronized puzzle countdown timer loop
+  const [masterEndTimestamp, setMasterEndTimestamp] = useState<number | null>(null);
+  const lastAnnouncedSecRef = React.useRef<number | null>(null);
+
+  // Synchronized puzzle countdown timer loop (Clock/Timestamp drift-immune version)
   useEffect(() => {
     let interval: any;
-    if (puzzleTimer !== null && puzzleTimer > 0 && !puzzleTimerPaused) {
+    if (masterEndTimestamp !== null && !puzzleTimerPaused) {
       interval = setInterval(() => {
-        setPuzzleTimer(prev => {
-          if (prev === null || prev <= 0) return null;
-          if (puzzleTimerPaused) return prev;
-          const next = prev - 1;
+        const now = Date.now();
+        const next = Math.max(0, Math.ceil((masterEndTimestamp - now) / 1000));
 
-          // Announce remaining minutes
-          if (next > 0 && next % 60 === 0) {
-            const mins = next / 60;
-            const text = `残り${mins}分です。`;
-            speakAnnouncement(text);
-            sendDiscordNotification(`【システムタイマー】⏳ ${text}`);
-            if ((window as any).electron) {
-              (window as any).electron.send('TRIGGER_DISCORD_TTS', {
-                triggerKey: `TIMER_${mins}`,
-                fallbackText: `残り時間、${mins}分です。`
-              });
-            }
+        setPuzzleTimer(next);
+
+        if (next === lastAnnouncedSecRef.current) {
+          // Already announced this second tick
+          return;
+        }
+        lastAnnouncedSecRef.current = next;
+
+        // Announce remaining minutes
+        if (next > 0 && next % 60 === 0) {
+          const mins = next / 60;
+          const text = `残り${mins}分です。`;
+          speakAnnouncement(text);
+          sendDiscordNotification(`【システムタイマー】⏳ ${text}`);
+          if ((window as any).electron) {
+            (window as any).electron.send('TRIGGER_DISCORD_TTS', {
+              triggerKey: `TIMER_${mins}`,
+              fallbackText: `残り時間、${mins}分です。`
+            });
           }
-          // Announce last 10 seconds
-          else if (next <= 10 && next > 0) {
-            speakAnnouncement(String(next));
-            if ((window as any).electron) {
-              (window as any).electron.send('TRIGGER_DISCORD_TTS', {
-                triggerKey: `TIMER_${next}S`,
-                fallbackText: String(next)
-              });
-            }
+        }
+        // Announce last 10 seconds
+        else if (next <= 10 && next > 0) {
+          speakAnnouncement(String(next));
+          if ((window as any).electron) {
+            (window as any).electron.send('TRIGGER_DISCORD_TTS', {
+              triggerKey: `TIMER_${next}S`,
+              fallbackText: String(next)
+            });
           }
-          // Announce termination
-          else if (next === 0) {
-            const correctList = ["OVERRIDE_SUCCESS", "EXEC_STOP_99"];
-            const closeList = ["OVERRIDE_CLOSE", "EXEC_STOP_98"];
+        }
+        // Announce termination
+        else if (next === 0) {
+          setMasterEndTimestamp(null);
+          setMasterPuzzlePhase('waiting_commentary');
 
-            const successNames = connectedDevicesRef.current
-              .filter(d => d.submittedPasscode && correctList.some(p => p.toUpperCase() === d.submittedPasscode.trim().toUpperCase()))
-              .map(d => d.name || `端末_${d.id.substring(0,6)}`);
+          const correctList = ["OVERRIDE_SUCCESS", "EXEC_STOP_99"];
+          const closeList = ["OVERRIDE_CLOSE", "EXEC_STOP_98"];
 
-            const closeNames = connectedDevicesRef.current
-              .filter(d => d.submittedPasscode && closeList.some(p => p.toUpperCase() === d.submittedPasscode.trim().toUpperCase()))
-              .map(d => d.name || `端末_${d.id.substring(0,6)}`);
+          const successNames = connectedDevicesRef.current
+            .filter(d => d.submittedPasscode && correctList.some(p => p.toUpperCase() === d.submittedPasscode.trim().toUpperCase()))
+            .map(d => d.name || `端末_${d.id.substring(0,6)}`);
 
-            const successStr = successNames.length > 0 ? successNames.join('と') : 'なし';
-            const closeStr = closeNames.length > 0 ? closeNames.join('と') : 'なし';
+          const closeNames = connectedDevicesRef.current
+            .filter(d => d.submittedPasscode && closeList.some(p => p.toUpperCase() === d.submittedPasscode.trim().toUpperCase()))
+            .map(d => d.name || `端末_${d.id.substring(0,6)}`);
 
-            const text = `終了。ゲームシステムが停止されました。結果を発表します。成功者、${successStr}。惜敗者、${closeStr}。`;
-            speakAnnouncement(text);
-            sendDiscordNotification(`【システムタイマー】🛑 ${text}`);
+          const successStr = successNames.length > 0 ? successNames.join('と') : 'なし';
+          const closeStr = closeNames.length > 0 ? closeNames.join('と') : 'なし';
 
-            if ((window as any).electron) {
-              (window as any).electron.send('TRIGGER_DISCORD_TTS', {
-                triggerKey: 'FINISH',
-                fallbackText: '制限時間終了。ゲームオーバーです。システムを強制停止します。'
-              });
-              (window as any).electron.send('START_POST_GAME_ANNOUNCEMENTS', {
-                successStr,
-                closeStr
-              });
-            }
-            return null;
+          const text = `終了。ゲームシステムが停止されました。結果を発表します。成功者、${successStr}。惜敗者、${closeStr}。`;
+          speakAnnouncement(text);
+          sendDiscordNotification(`【システムタイマー】🛑 ${text}`);
+
+          if ((window as any).electron) {
+            (window as any).electron.send('TRIGGER_DISCORD_TTS', {
+              triggerKey: 'FINISH',
+              fallbackText: '制限時間終了。ゲームオーバーです。システムを強制停止します。'
+            });
+            (window as any).electron.send('START_POST_GAME_ANNOUNCEMENTS', {
+              successStr,
+              closeStr
+            });
           }
-
-          return next;
-        });
-      }, 1000);
+        }
+      }, 250); // High-fidelity 250ms interval for clock ticking
     }
     return () => clearInterval(interval);
-  }, [puzzleTimer, puzzleTimerPaused]);
+  }, [masterEndTimestamp, puzzleTimerPaused]);
 
   useEffect(() => {
     if ((window as any).electron) {
@@ -389,6 +398,7 @@ const App: React.FC = () => {
 
   const handlePuzzlePrepare = () => {
     sendCommand('PUZZLE_PREPARE');
+    setMasterPuzzlePhase('prepared');
     speakAnnouncement("謎解きの公演準備完了。スタートまでしばらくお待ちください。");
     sendDiscordNotification("【システム通知】📢 謎解きの公演準備完了。まもなくミッションを開始します。");
     if ((window as any).electron) {
@@ -401,8 +411,13 @@ const App: React.FC = () => {
       (window as any).electron.send('STOP_STANDBY_LOOP');
     }
     sendCommand('PUZZLE_START');
-    setPuzzleTimer(420); // Starts counting down 7 minutes (420s) directly
+    setMasterPuzzlePhase('playing');
+
+    const endTs = Date.now() + 420000;
+    setMasterEndTimestamp(endTs);
+    setPuzzleTimer(420);
     setPuzzleTimerPaused(false);
+    lastAnnouncedSecRef.current = null;
 
     // Auto trigger connection message for starting the game
     if ((window as any).electron) {
@@ -420,6 +435,8 @@ const App: React.FC = () => {
       (window as any).electron.send('STOP_STANDBY_LOOP');
     }
     sendCommand('PUZZLE_STOP');
+    setMasterPuzzlePhase('idle');
+    setMasterEndTimestamp(null);
     setPuzzleTimer(null);
     setPuzzleTimerPaused(false);
     setIsEmergencyActive(false);
@@ -449,8 +466,14 @@ const App: React.FC = () => {
       (window as any).electron.send('STOP_STANDBY_LOOP');
     }
     sendCommand('PUZZLE_RESTART');
-    setPuzzleTimer(420); // Restarts countdown to 7 minutes (420s) directly
+    setMasterPuzzlePhase('playing');
+
+    const endTs = Date.now() + 420000;
+    setMasterEndTimestamp(endTs);
+    setPuzzleTimer(420);
     setPuzzleTimerPaused(false);
+    lastAnnouncedSecRef.current = null;
+
     setIsEmergencyActive(false);
     setRetiredDeviceIds([]);
     setResultsVideoSent(false); // Reset results video gate
@@ -469,14 +492,30 @@ const App: React.FC = () => {
 
   const handlePuzzlePause = () => {
     sendCommand('PUZZLE_PAUSE');
+    setMasterPuzzlePhase('paused');
     setPuzzleTimerPaused(true);
+
+    // Save remaining seconds
+    if (masterEndTimestamp !== null) {
+      const remaining = Math.max(0, Math.ceil((masterEndTimestamp - Date.now()) / 1000));
+      setPuzzleTimer(remaining);
+    }
+    setMasterEndTimestamp(null);
+
     speakAnnouncement("ゲームを一時停止します。");
     sendDiscordNotification("【システム通知】⏸️ ゲームが一時停止されました。");
   };
 
   const handlePuzzleResume = () => {
     sendCommand('PUZZLE_RESUME');
+    setMasterPuzzlePhase('playing');
     setPuzzleTimerPaused(false);
+
+    // Recompute endTimestamp based on the paused remaining seconds
+    const remaining = puzzleTimer || 420;
+    const endTs = Date.now() + remaining * 1000;
+    setMasterEndTimestamp(endTs);
+
     speakAnnouncement("ゲームを再開します。");
     sendDiscordNotification("【システム通知】▶️ ゲームが再開されました。");
   };
@@ -1033,8 +1072,9 @@ const App: React.FC = () => {
                              )}
 
                              <button
+                                 disabled={masterPuzzlePhase !== 'idle'}
                                  onClick={handlePuzzlePrepare}
-                                 className="flex flex-col items-center gap-4 p-6 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/30 hover:border-blue-500/50 rounded-3xl transition-all group"
+                                 className={`flex flex-col items-center gap-4 p-6 border rounded-3xl transition-all group ${masterPuzzlePhase === 'idle' ? 'bg-blue-500/10 border-blue-500/30 hover:border-blue-500/50' : 'opacity-30 cursor-not-allowed bg-white/5 border-white/5 text-white/20'}`}
                              >
                                  <div className="p-4 bg-blue-500/20 text-blue-400 rounded-2xl group-hover:scale-110 transition-transform">
                                      <Sliders size={24} />
@@ -1046,8 +1086,9 @@ const App: React.FC = () => {
                              </button>
 
                              <button
+                                 disabled={masterPuzzlePhase !== 'prepared'}
                                  onClick={handlePuzzleStart}
-                                 className="flex flex-col items-center gap-4 p-6 bg-green-500/10 hover:bg-green-500/20 border border-green-500/30 hover:border-green-500/50 rounded-3xl transition-all group"
+                                 className={`flex flex-col items-center gap-4 p-6 border rounded-3xl transition-all group ${masterPuzzlePhase === 'prepared' ? 'bg-green-500/10 border-green-500/30 hover:border-green-500/50' : 'opacity-30 cursor-not-allowed bg-white/5 border-white/5 text-white/20'}`}
                              >
                                  <div className="p-4 bg-green-500/20 text-green-400 rounded-2xl group-hover:scale-110 transition-transform">
                                      <Play size={24} fill="currentColor" />
@@ -1059,7 +1100,7 @@ const App: React.FC = () => {
                              </button>
 
                              <button
-                                 disabled={puzzleTimer === null}
+                                 disabled={masterPuzzlePhase === 'idle'}
                                  onClick={() => {
                                      if (confirm("警告: 公演をストップ（中断）しますか？")) {
                                          if (confirm("本当に中断しますか？この操作は取り消せません。")) {
@@ -1067,7 +1108,7 @@ const App: React.FC = () => {
                                          }
                                      }
                                  }}
-                                 className={`flex flex-col items-center gap-4 p-6 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 hover:border-red-500/50 rounded-3xl transition-all group ${puzzleTimer === null ? 'opacity-30 cursor-not-allowed' : ''}`}
+                                 className={`flex flex-col items-center gap-4 p-6 border rounded-3xl transition-all group ${masterPuzzlePhase !== 'idle' ? 'bg-red-500/10 border-red-500/30 hover:border-red-500/50' : 'opacity-30 cursor-not-allowed bg-white/5 border-white/5 text-white/20'}`}
                              >
                                  <div className="p-4 bg-red-500/20 text-red-400 rounded-2xl group-hover:scale-110 transition-transform">
                                      <Power size={24} />
@@ -1079,7 +1120,7 @@ const App: React.FC = () => {
                              </button>
 
                              <button
-                                 disabled={puzzleTimer === null}
+                                 disabled={masterPuzzlePhase === 'idle' || masterPuzzlePhase === 'prepared'}
                                  onClick={() => {
                                      if (confirm("警告: 公演を一斉再起動しますか？")) {
                                          if (confirm("本当に再起動しますか？タイマーが7分にリセットされます。")) {
@@ -1087,7 +1128,7 @@ const App: React.FC = () => {
                                          }
                                      }
                                  }}
-                                 className={`flex flex-col items-center gap-4 p-6 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/30 hover:border-blue-500/50 rounded-3xl transition-all group ${puzzleTimer === null ? 'opacity-30 cursor-not-allowed' : ''}`}
+                                 className={`flex flex-col items-center gap-4 p-6 border rounded-3xl transition-all group ${(masterPuzzlePhase !== 'idle' && masterPuzzlePhase !== 'prepared') ? 'bg-blue-500/10 border-blue-500/30 hover:border-blue-500/50' : 'opacity-30 cursor-not-allowed bg-white/5 border-white/5 text-white/20'}`}
                              >
                                  <div className="p-4 bg-blue-500/20 text-blue-400 rounded-2xl group-hover:scale-110 transition-transform">
                                      <Zap size={24} />
@@ -1098,7 +1139,7 @@ const App: React.FC = () => {
                                  </div>
                              </button>
 
-                             {puzzleTimer !== null && puzzleTimer > 0 && (
+                             {(masterPuzzlePhase === 'playing' || masterPuzzlePhase === 'paused') ? (
                                  <button
                                      onClick={puzzleTimerPaused ? handlePuzzleResume : handlePuzzlePause}
                                      className={`flex flex-col items-center gap-4 p-6 rounded-3xl transition-all group ${puzzleTimerPaused ? 'bg-yellow-500/10 border-yellow-500/30 hover:bg-yellow-500/20' : 'bg-orange-500/10 border-orange-500/30 hover:bg-orange-500/20'}`}
@@ -1113,6 +1154,11 @@ const App: React.FC = () => {
                                          <div className="text-[9px] text-white/40 mt-1 uppercase">Puzzle_Control</div>
                                      </div>
                                  </button>
+                             ) : (
+                                 <div className="flex flex-col items-center justify-center p-6 border border-white/5 bg-white/5 opacity-20 rounded-3xl select-none font-mono">
+                                      <Lock size={24} />
+                                      <span className="text-[8px] uppercase tracking-widest mt-2">CTRL_LOCKED</span>
+                                 </div>
                              )}
                          </div>
 
@@ -1120,63 +1166,25 @@ const App: React.FC = () => {
 
                          <div className="w-full space-y-4 text-left">
                              <h3 className="text-xs font-bold text-white/40 uppercase tracking-widest pl-2">公演結果発表 & 解説ビデオ制御</h3>
-                             <div className="grid grid-cols-4 gap-4 w-full">
+                             <div className="max-w-md w-full">
                                  <button
-                                     disabled={puzzleTimer !== 0}
-                                     onClick={() => {
-                                         if (confirm("全子機で一斉に【正解動画】を再生しますか？")) {
-                                             sendCommand('PUZZLE_RESULT_CORRECT');
-                                             setResultsVideoSent(true);
-                                         }
-                                     }}
-                                     className={`flex flex-col items-center gap-3 p-4 bg-green-500/5 hover:bg-green-500/10 border border-green-500/20 rounded-2xl transition-all ${puzzleTimer !== 0 ? 'opacity-30 cursor-not-allowed' : ''}`}
-                                 >
-                                     <Play size={18} className="text-green-400" />
-                                     <span className="text-[10px] font-black text-green-400 uppercase tracking-wider">正解動画を流す</span>
-                                 </button>
-
-                                 <button
-                                     disabled={puzzleTimer !== 0}
-                                     onClick={() => {
-                                         if (confirm("全子機で一斉に【おしかった動画】を再生しますか？")) {
-                                             sendCommand('PUZZLE_RESULT_CLOSE');
-                                             setResultsVideoSent(true);
-                                         }
-                                     }}
-                                     className={`flex flex-col items-center gap-3 p-4 bg-yellow-500/5 hover:bg-yellow-500/10 border border-yellow-500/20 rounded-2xl transition-all ${puzzleTimer !== 0 ? 'opacity-30 cursor-not-allowed' : ''}`}
-                                 >
-                                     <Play size={18} className="text-yellow-400" />
-                                     <span className="text-[10px] font-black text-yellow-400 uppercase tracking-wider">おしかった動画を流す</span>
-                                 </button>
-
-                                 <button
-                                     disabled={puzzleTimer !== 0}
-                                     onClick={() => {
-                                         if (confirm("全子機で一斉に【失敗動画】を再生しますか？")) {
-                                             sendCommand('PUZZLE_RESULT_FAILED');
-                                             setResultsVideoSent(true);
-                                         }
-                                     }}
-                                     className={`flex flex-col items-center gap-3 p-4 bg-red-500/5 hover:bg-red-500/10 border border-red-500/20 rounded-2xl transition-all ${puzzleTimer !== 0 ? 'opacity-30 cursor-not-allowed' : ''}`}
-                                 >
-                                     <Play size={18} className="text-red-400" />
-                                     <span className="text-[10px] font-black text-red-400 uppercase tracking-wider">失敗動画を流す</span>
-                                 </button>
-
-                                 <button
-                                     disabled={!resultsVideoSent}
+                                     disabled={masterPuzzlePhase !== 'waiting_commentary'}
                                      onClick={() => {
                                          if (confirm("全子機で一斉に【解説動画】を再生しますか？")) {
                                              sendCommand('PUZZLE_RESULT_COMMENTARY');
+                                             setMasterPuzzlePhase('commentary_playing');
                                              if ((window as any).electron) {
                                                 (window as any).electron.send('PLAY_COMMENTARY_END');
                                              }
                                          }
                                      }}
-                                     className={`flex flex-col items-center gap-3 p-4 bg-purple-500/5 hover:bg-purple-500/10 border border-purple-500/20 rounded-2xl transition-all ${!resultsVideoSent ? 'opacity-30 cursor-not-allowed' : ''}`}
+                                     className={`flex items-center justify-center gap-4 w-full p-5 rounded-2xl border transition-all ${masterPuzzlePhase === 'waiting_commentary' ? 'bg-purple-500/10 hover:bg-purple-500/20 border-purple-500/30 text-purple-400 shadow-lg' : 'opacity-30 cursor-not-allowed bg-white/5 border-white/5 text-white/20'}`}
                                  >
-                                     <Play size={18} className="text-purple-400" />
-                                     <span className="text-[10px] font-black text-purple-400 uppercase tracking-wider">解説動画を流す</span>
+                                     <Play size={24} className="text-purple-400 animate-pulse" />
+                                     <div className="text-left font-sans">
+                                          <div className="text-xs font-black text-purple-400 uppercase tracking-widest">解説動画を一斉上映</div>
+                                          <div className="text-[8px] text-white/40 mt-0.5 font-mono uppercase">PUZZLE_RESULT_COMMENTARY</div>
+                                     </div>
                                  </button>
                              </div>
                          </div>
