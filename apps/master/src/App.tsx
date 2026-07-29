@@ -70,6 +70,38 @@ const App: React.FC = () => {
     retiredDeviceIdsRef.current = retiredDeviceIds;
   }, [retiredDeviceIds]);
 
+  // Periodic Phase and Timer Sync to prevent child desynchronization or drift
+  useEffect(() => {
+    const isPlayingOrPaused = masterPuzzlePhase === 'playing' || masterPuzzlePhase === 'paused';
+    if (isPlayingOrPaused && puzzleTimer !== null) {
+      const interval = setInterval(() => {
+        sendCommand('PHASE_SYNC', {
+          puzzleState: masterPuzzlePhase,
+          timerSeconds: puzzleTimer,
+          isPaused: puzzleTimerPaused
+        });
+      }, 3000);
+      return () => clearInterval(interval);
+    }
+  }, [masterPuzzlePhase, puzzleTimer, puzzleTimerPaused]);
+
+  // Synchronize multiple retired devices list with main process Discord voice bot
+  useEffect(() => {
+    if (retiredDeviceIds.length > 0) {
+      const combinedNames = retiredDeviceIds.map(id => {
+         const dev = connectedDevices.find(d => d.id === id);
+         return dev ? (dev.name || `端末_${id.substring(0, 6)}`) : `端末_${id.substring(0, 6)}`;
+      }).join('と');
+      if ((window as any).electron) {
+         (window as any).electron.send('SET_EMERGENCY_STATE', { active: true, name: combinedNames });
+      }
+    } else {
+      if ((window as any).electron) {
+         (window as any).electron.send('SET_EMERGENCY_STATE', { active: false });
+      }
+    }
+  }, [retiredDeviceIds, connectedDevices]);
+
   // Maid Delivery States
   const [activeDeliveries, setActiveDeliveries] = useState<any[]>([]);
   const [resultsVideoSent, setResultsVideoSent] = useState(false);

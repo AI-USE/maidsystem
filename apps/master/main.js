@@ -9,6 +9,37 @@ let mainWindow;
 const devices = new Map(); // Indexed by persistent deviceId
 const socketMap = new Map(); // socket.id -> deviceId
 const activeDeliveries = new Map(); // itemCode -> { deviceId, roomCode, itemCode, itemName, intervalId, socketId }
+let deliveriesLoopInterval = null;
+
+function triggerDeliveriesLoop() {
+  if (deliveriesLoopInterval) {
+    clearInterval(deliveriesLoopInterval);
+    deliveriesLoopInterval = null;
+  }
+
+  if (activeDeliveries.size === 0) {
+    return;
+  }
+
+  const buildAnnouncementText = () => {
+    const phrases = [];
+    for (const d of activeDeliveries.values()) {
+        const dev = devices.get(d.deviceId);
+        const devName = dev ? (dev.name || `端末`) : '子機';
+        phrases.push(`部屋名${devName}の${d.itemName}`);
+    }
+    return phrases.join('、および') + '、配達要請。';
+  };
+
+  const text = buildAnnouncementText();
+  playDiscordTts(text);
+
+  deliveriesLoopInterval = setInterval(() => {
+    if (!emergencyActive && activeDeliveries.size > 0) {
+      playDiscordTts(buildAnnouncementText());
+    }
+  }, 10000);
+}
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -165,26 +196,18 @@ io.on('connection', (socket) => {
             const itemName = nameMatch ? nameMatch[1] : '';
 
             if (activeDeliveries.has(itemCode)) {
-                clearInterval(activeDeliveries.get(itemCode).intervalId);
+                activeDeliveries.delete(itemCode);
             }
-
-            const devName = (pDeviceId && devices.has(pDeviceId)) ? (devices.get(pDeviceId).name || `端末_${pDeviceId.substring(0,6)}`) : '子機';
-            const announceText = `部屋名${devName}、アイテム${itemName}、配達要請。`;
-            playDiscordTts(announceText);
-
-            const intervalId = setInterval(() => {
-                console.log(`Looping delivery request for item: ${itemCode}`);
-                playDiscordTts(announceText);
-            }, 8000);
 
             activeDeliveries.set(itemCode, {
                 deviceId: pDeviceId,
                 roomCode,
                 itemCode,
                 itemName,
-                intervalId,
                 socketId: sid
             });
+
+            triggerDeliveriesLoop();
 
             if (mainWindow) {
                 mainWindow.webContents.send('MAID_DELIVERY_ACTIVE', {
@@ -260,7 +283,6 @@ ipcMain.on('CLEAR_MAID_DELIVERY', (event, { itemCode }) => {
     console.log(`CLEAR_MAID_DELIVERY received for item: ${itemCode}`);
     if (activeDeliveries.has(itemCode)) {
         const delivery = activeDeliveries.get(itemCode);
-        clearInterval(delivery.intervalId);
 
         // Notify Discord Voice bot
         playDiscordTts(`物品${delivery.itemName}、配備完了しました。`);
@@ -272,6 +294,7 @@ ipcMain.on('CLEAR_MAID_DELIVERY', (event, { itemCode }) => {
         });
 
         activeDeliveries.delete(itemCode);
+        triggerDeliveriesLoop();
 
         // Notify master renderer to update lists
         if (mainWindow) {
@@ -281,10 +304,11 @@ ipcMain.on('CLEAR_MAID_DELIVERY', (event, { itemCode }) => {
 });
 
 ipcMain.on('CLEAR_ALL_MAID_DELIVERIES', (event) => {
-    for (const [itemCode, delivery] of activeDeliveries.entries()) {
-        clearInterval(delivery.intervalId);
-    }
     activeDeliveries.clear();
+    if (deliveriesLoopInterval) {
+        clearInterval(deliveriesLoopInterval);
+        deliveriesLoopInterval = null;
+    }
     if (mainWindow) {
         mainWindow.webContents.send('MAID_DELIVERY_RESET');
     }
@@ -293,10 +317,11 @@ ipcMain.on('CLEAR_ALL_MAID_DELIVERIES', (event) => {
 ipcMain.on('SEND_REMOTE_COMMAND', (event, { targetId, command }) => {
   if (command.type === 'PUZZLE_STOP' || command.type === 'PUZZLE_RESTART' || command.type === 'PUZZLE_START') {
     // Clean all deliveries
-    for (const [itemCode, delivery] of activeDeliveries.entries()) {
-        clearInterval(delivery.intervalId);
-    }
     activeDeliveries.clear();
+    if (deliveriesLoopInterval) {
+        clearInterval(deliveriesLoopInterval);
+        deliveriesLoopInterval = null;
+    }
 
     // Clean post game loops
     if (postGameInterval) {

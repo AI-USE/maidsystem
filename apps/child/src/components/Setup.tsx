@@ -8,9 +8,10 @@ interface SetupProps {
 
 interface OfflineSetupProps extends SetupProps {
   onStartOffline: (targetTime: { hour: string; minute: string; second: string }) => void;
+  currentTime?: Date;
 }
 
-export const Setup: React.FC<OfflineSetupProps> = ({ onComplete, onStartOffline }) => {
+export const Setup: React.FC<OfflineSetupProps> = ({ onComplete, onStartOffline, currentTime }) => {
   const [step, setStep] = useState(1);
   const [deviceName, setDeviceName] = useState(() => {
       const name = localStorage.getItem('deviceName');
@@ -45,7 +46,14 @@ export const Setup: React.FC<OfflineSetupProps> = ({ onComplete, onStartOffline 
   });
 
   // Offline Mode Patterns Configuration states
-  const [offlineTargetTime, setOfflineTargetTime] = useState({ hour: '12', minute: '00', second: '00' });
+  const [offlineTargetTime, setOfflineTargetTime] = useState(() => {
+      const activeDate = currentTime || new Date();
+      return {
+          hour: String(activeDate.getHours()).padStart(2, '0'),
+          minute: String(activeDate.getMinutes()).padStart(2, '0'),
+          second: String(activeDate.getSeconds()).padStart(2, '0')
+      };
+  });
 
   const testConnection = async () => {
     setTestStatus('testing');

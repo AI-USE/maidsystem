@@ -37,6 +37,33 @@ const synthContextRef: { current: AudioContext | null } = { current: null };
 const bgmOscillatorRef: { current: OscillatorNode | null } = { current: null };
 const bgmAudioRef: { current: HTMLAudioElement | null } = { current: null };
 
+const playRhythmTick = (freq = 880, duration = 0.1) => {
+  try {
+     if (!synthContextRef.current) {
+         synthContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+     }
+     const ctx = synthContextRef.current;
+     if (ctx.state === 'suspended') ctx.resume();
+
+     const osc = ctx.createOscillator();
+     const gain = ctx.createGain();
+
+     osc.type = 'sine';
+     osc.frequency.setValueAtTime(freq, ctx.currentTime);
+
+     gain.gain.setValueAtTime(0.15, ctx.currentTime);
+     gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + duration);
+
+     osc.connect(gain);
+     gain.connect(ctx.destination);
+
+     osc.start();
+     osc.stop(ctx.currentTime + duration);
+  } catch (err) {
+     console.error('Failed to play rhythm tick sound:', err);
+  }
+};
+
 const playSynthSound = (type: 'tap' | 'type' | 'open' | 'success' | 'bgm') => {
   try {
      if (!synthContextRef.current) {
@@ -169,6 +196,8 @@ const App: React.FC = () => {
 
   // Admin Desktop Floating PDF 2 Window State
   const [adminPdfOpen, setAdminPdfOpen] = useState(false);
+  const [showTextFallback1, setShowTextFallback1] = useState(false);
+  const [showTextFallback2, setShowTextFallback2] = useState(false);
 
   // Fullscreen unskippable video state
   const [videoPlaying, setVideoPlaying] = useState(false);
@@ -245,10 +274,22 @@ const App: React.FC = () => {
       setPuzzleState('locked');
     }
     if (videoType === 'commentary') {
+      let speechText = "";
       if (gameResult === 'correct') {
         setPostCommentaryScreen('success');
+        speechText = "おめでとうございます。ミッションクリアです。スタッフの指示に従い、退室のご準備をお願いいたします。";
       } else {
         setPostCommentaryScreen('failed');
+        speechText = "残念、タイムアップです。処刑装置が完全に作動しました。スタッフの指示に従い、退出のご案内をお待ちください。";
+      }
+
+      if ('speechSynthesis' in window) {
+         window.speechSynthesis.cancel();
+         const utterance = new SpeechSynthesisUtterance(speechText);
+         utterance.lang = 'ja-JP';
+         utterance.rate = 1.0;
+         utterance.volume = 1.0;
+         window.speechSynthesis.speak(utterance);
       }
     }
 
@@ -505,7 +546,38 @@ const App: React.FC = () => {
     if (timerSeconds !== null && timerSeconds > 0 && puzzleState !== 'idle' && !isPaused && !videoPlaying) {
       interval = setInterval(() => {
         setTimerSeconds(prev => {
-          if (prev && prev > 1) return prev - 1;
+          if (prev && prev > 1) {
+             const next = prev - 1;
+
+             // 1. Speek announcement at exactly 30 seconds remaining
+             if (next === 30) {
+                 if ('speechSynthesis' in window) {
+                     window.speechSynthesis.cancel();
+                     const utterance = new SpeechSynthesisUtterance("間もなく処刑コードが入力できます。");
+                     utterance.lang = 'ja-JP';
+                     utterance.rate = 1.0;
+                     utterance.volume = 1.0;
+                     window.speechSynthesis.speak(utterance);
+                 }
+             }
+
+             // 2. Play rhythmic beeps and countdown speech under 10 seconds remaining
+             if (next <= 10) {
+                 const pitch = next === 1 ? 1200 : 880;
+                 playRhythmTick(pitch, 0.15);
+
+                 if ('speechSynthesis' in window) {
+                     window.speechSynthesis.cancel();
+                     const utterance = new SpeechSynthesisUtterance(String(next));
+                     utterance.lang = 'ja-JP';
+                     utterance.rate = 1.3;
+                     utterance.volume = 0.8;
+                     window.speechSynthesis.speak(utterance);
+                 }
+             }
+
+             return next;
+          }
           if (prev === 1) {
              // 7 minutes expiration: trigger 5-second blackout first, and 3 seconds after blackout starts, play results video.
              setTimeout(() => {
@@ -658,6 +730,22 @@ const App: React.FC = () => {
 
         // Trigger start video playback
         startVideoPlayback('start');
+        break;
+      }
+      case 'PHASE_SYNC': {
+        const { puzzleState: masterState, timerSeconds: masterSecs, isPaused: masterPaused } = cmd.payload;
+        if (masterSecs !== undefined && timerSeconds !== null) {
+          if (Math.abs(timerSeconds - masterSecs) > 2) {
+            setTimerSeconds(masterSecs);
+          }
+        }
+        if (masterPaused !== undefined && isPaused !== masterPaused) {
+          setIsPaused(masterPaused);
+        }
+        // If master is playing and child is idle, transition!
+        if (masterState === 'playing' && puzzleState === 'idle' && !videoPlaying) {
+          setPuzzleState('locked');
+        }
         break;
       }
       case 'MAID_DELIVERY_CLEARED': {
@@ -1064,6 +1152,7 @@ const App: React.FC = () => {
               setOfflineStandbyActive(true);
               setShowSetup(false);
           }}
+          currentTime={timeOverride || time}
       />;
   }
 
@@ -1131,29 +1220,51 @@ const App: React.FC = () => {
           )}
       </AnimatePresence>
 
+      {/* Dynamic Warning pulsing crimson vignette for final 60 seconds */}
+      {timerSeconds !== null && timerSeconds <= 60 && timerSeconds > 0 && puzzleState !== 'idle' && !isPaused && !videoPlaying && (
+          <div className="fixed inset-0 pointer-events-none z-[9999] border-[8px] warning-pulse-border rounded-none" />
+      )}
+
       {/* Post Commentary Exit Screen Overlays */}
       <AnimatePresence>
           {postCommentaryScreen === 'success' && (
                <motion.div
                  initial={{ opacity: 0 }}
                  animate={{ opacity: 1 }}
-                 className="fixed inset-0 z-[10100] bg-black flex flex-col items-center justify-center p-6 text-center select-none"
+                 className="fixed inset-0 z-[10100] bg-[#050508] flex flex-col items-center justify-center p-6 text-center select-none"
                >
-                    <div className="absolute inset-0 bg-[radial-gradient(rgba(34,197,94,0.15)_1px,transparent_1px)] [background-size:24px_24px] pointer-events-none z-0" />
+                    <div className="scanlines z-0" />
+                    <div className="absolute inset-0 bg-[radial-gradient(rgba(34,197,94,0.15)_1.5px,transparent_1px)] [background-size:24px_24px] pointer-events-none z-0" />
                     <motion.div
                       initial={{ scale: 0.9, opacity: 0 }}
                       animate={{ scale: 1, opacity: 1 }}
-                      className="max-w-md w-full glass-panel p-10 border-green-500/30 bg-black/80 flex flex-col items-center gap-6 shadow-[0_0_50px_rgba(34,197,94,0.2)] z-10"
+                      className="max-w-xl w-full glass-panel p-12 border-green-500/50 bg-black/90 flex flex-col items-center gap-8 shadow-[0_0_80px_rgba(34,197,94,0.3)] z-10 border-2 rounded-[36px]"
                     >
-                         <CheckCircle2 className="text-green-500 animate-bounce" size={64} />
-                         <div>
-                              <h2 className="text-xl font-black tracking-[0.2em] text-white uppercase">MISSION_SUCCESSFUL</h2>
-                              <p className="text-sm text-green-400 font-mono mt-1 tracking-widest font-black">脱出成功</p>
+                         <div className="w-24 h-24 rounded-full bg-green-500/10 border-2 border-green-500 flex items-center justify-center shadow-[0_0_30px_rgba(34,197,94,0.2)]">
+                              <CheckCircle2 className="text-green-400 animate-bounce" size={54} />
                          </div>
-                         <div className="p-4 rounded-xl bg-green-950/20 border border-green-900/30 text-[11px] leading-relaxed text-green-400 font-mono text-left w-full">
-                              🎉 【おめでとうございます！】:
-                              制限時間内に正しい処刑停止コードを検知・送信し、致死処分シーケンスの完全オーバーライドに成功しました！
-                              本ミッションは無事完了しました。
+                         <div className="space-y-2">
+                              <h2 className="text-4xl font-extrabold tracking-[0.3em] text-transparent bg-clip-text bg-gradient-to-r from-green-400 to-emerald-300 uppercase">
+                                   MISSION SUCCESSFUL
+                              </h2>
+                              <p className="text-base text-green-400 font-mono tracking-[0.4em] font-black mt-2">
+                                   [ 脱出成功 // OVERRIDE ACCEPTED ]
+                              </p>
+                         </div>
+                         <div className="p-6 rounded-2xl bg-green-950/20 border border-green-900/40 text-xs leading-relaxed text-green-400 font-mono text-left w-full space-y-3 shadow-inner">
+                              <div className="font-bold border-b border-green-900/30 pb-2">
+                                   🎉 MISSION LOG: SYSTEM RECONCILIATION COMPLETE
+                              </div>
+                              <p>
+                                   制限時間内に正しい処刑停止コードを検知・送信し、致死処分シーケンスの完全オーバーライドに成功しました！
+                              </p>
+                              <p className="text-white/80 font-bold">
+                                   【退室のご案内】:
+                                   ミッション完了です。スタッフの案内に従い、速やかにご退室ください。お疲れ様でした！
+                              </p>
+                         </div>
+                         <div className="text-[10px] text-white/30 uppercase font-mono tracking-[0.2em] animate-pulse">
+                              STATUS: DISPATCH_SECURITY_EXIT_DOOR_OPEN
                          </div>
                     </motion.div>
                </motion.div>
@@ -1165,23 +1276,40 @@ const App: React.FC = () => {
                <motion.div
                  initial={{ opacity: 0 }}
                  animate={{ opacity: 1 }}
-                 className="fixed inset-0 z-[10100] bg-black flex flex-col items-center justify-center p-6 text-center select-none"
+                 className="fixed inset-0 z-[10100] bg-[#050508] flex flex-col items-center justify-center p-6 text-center select-none"
                >
-                    <div className="absolute inset-0 bg-[radial-gradient(rgba(239,68,68,0.15)_1px,transparent_1px)] [background-size:24px_24px] pointer-events-none z-0" />
+                    <div className="scanlines z-0" />
+                    <div className="absolute inset-0 bg-[radial-gradient(rgba(239,68,68,0.15)_1.5px,transparent_1px)] [background-size:24px_24px] pointer-events-none z-0" />
                     <motion.div
                       initial={{ scale: 0.9, opacity: 0 }}
                       animate={{ scale: 1, opacity: 1 }}
-                      className="max-w-md w-full glass-panel p-10 border-red-500/30 bg-black/80 flex flex-col items-center gap-6 shadow-[0_0_50px_rgba(239,68,68,0.2)] z-10"
+                      className="max-w-xl w-full glass-panel p-12 border-red-500/50 bg-black/90 flex flex-col items-center gap-8 shadow-[0_0_80px_rgba(239,68,68,0.3)] z-10 border-2 rounded-[36px]"
                     >
-                         <ShieldAlert className="text-red-500 animate-pulse" size={64} />
-                         <div>
-                              <h2 className="text-xl font-black tracking-[0.2em] text-white uppercase">MISSION_FAILED</h2>
-                              <p className="text-sm text-red-500 font-mono mt-1 tracking-widest font-black">脱出失敗</p>
+                         <div className="w-24 h-24 rounded-full bg-red-500/10 border-2 border-red-500 flex items-center justify-center shadow-[0_0_30px_rgba(239,68,68,0.2)]">
+                              <ShieldAlert className="text-red-400 animate-pulse" size={54} />
                          </div>
-                         <div className="p-4 rounded-xl bg-red-950/20 border border-red-900/30 text-[11px] leading-relaxed text-red-400 font-mono text-left w-full">
-                              🚨 【脱出失敗】:
-                              正しい処刑停止コードが入力されなかったか、制限時間内にシステムをオーバーライドできませんでした。
-                              生命維持保護セッションは終了しました。
+                         <div className="space-y-2">
+                              <h2 className="text-4xl font-extrabold tracking-[0.3em] text-transparent bg-clip-text bg-gradient-to-r from-red-500 to-rose-400 uppercase">
+                                   MISSION FAILED
+                              </h2>
+                              <p className="text-base text-red-500 font-mono tracking-[0.4em] font-black mt-2">
+                                   [ 脱出失敗 // SYSTEM LOCKED OUT ]
+                              </p>
+                         </div>
+                         <div className="p-6 rounded-2xl bg-red-950/20 border border-red-900/40 text-xs leading-relaxed text-red-400 font-mono text-left w-full space-y-3 shadow-inner">
+                              <div className="font-bold border-b border-red-900/30 pb-2">
+                                   🚨 ALERT: CORE TERMINATION INITIATED
+                              </div>
+                              <p>
+                                   正しい処刑停止コードが入力されなかったか、制限時間内にシステムをオーバーライドできませんでした。生命維持保護セッションはすべて終了しました。
+                              </p>
+                              <p className="text-white/80 font-bold">
+                                   【退出のご案内】:
+                                   タイムアップです。スタッフの指示に従い、退出のご案内をお待ちください。
+                              </p>
+                         </div>
+                         <div className="text-[10px] text-white/30 uppercase font-mono tracking-[0.2em] animate-pulse">
+                              STATUS: TERMINAL_SESSION_TERMINATED_PERMANENTLY
                          </div>
                     </motion.div>
                </motion.div>
@@ -1541,11 +1669,70 @@ const App: React.FC = () => {
         {puzzleState === 'browsing_pdf_1' && (
             <div className="fixed inset-0 z-50 bg-black flex flex-col">
                 {/* Embedded PDF 1 viewport occupying 100% of the screen */}
-                <iframe
-                   src="./documents/doc1.pdf"
-                   className="w-full h-full border-0 bg-black"
-                   title="処刑装置起動手順_LOG_832.pdf"
-                />
+                {!showTextFallback1 ? (
+                    <iframe
+                       src="./documents/doc1.pdf"
+                       className="w-full h-full border-0 bg-black"
+                       title="処刑装置起動手順_LOG_832.pdf"
+                    />
+                ) : (
+                    <div className="flex-1 bg-[#050508] p-12 overflow-y-auto font-mono text-[#eaeaea] max-w-4xl mx-auto w-full border-x border-white/5 space-y-8 relative">
+                         <div className="border-b border-red-500/30 pb-4">
+                              <span className="text-[10px] text-red-500 font-bold uppercase tracking-[0.2em]">GOV-CORE ARCHIVE // SYSTEM_INIT_LOG_832</span>
+                              <h1 className="text-3xl font-black tracking-[0.1em] text-white mt-1">処刑装置起動手順極秘ファイル</h1>
+                         </div>
+
+                         <div className="space-y-6 text-sm leading-relaxed">
+                              <div className="p-4 bg-red-950/20 border border-red-900/30 rounded-xl space-y-2">
+                                   <div className="text-red-400 font-black flex items-center gap-2">
+                                       <span>🔒 ACTIVATION PASSCODE:</span>
+                                   </div>
+                                   <p className="text-lg font-bold text-white font-mono tracking-widest pl-2">
+                                       EVT_TRIGGER_99
+                                   </p>
+                              </div>
+
+                              <div className="space-y-3">
+                                   <h3 className="text-base font-bold text-red-500">■ 処刑停止シーケンス (Termination Override System)</h3>
+                                   <p className="text-white/80 pl-2">
+                                        制限時間が残り <span className="text-red-400 font-bold underline">20秒以下</span> に到達した際、画面下部 DOCK の『EXECUTION OVERRIDE (処刑停止ツール)』が高度活性化されます。
+                                   </p>
+                                   <p className="text-white/80 pl-2">
+                                        その時間内でのみ、正しい処刑停止コード (<span className="text-red-400 font-bold">STOP CODE: OVERRIDE_SUCCESS</span>) の送信、もしくは緊急脱出コマンド (<span className="text-red-400 font-bold">EXEC_STOP_99</span>) の入力が有効となります。
+                                   </p>
+                              </div>
+
+                              <div className="space-y-3">
+                                   <h3 className="text-base font-bold text-red-500">■ 防犯監視システム (Security Grid)</h3>
+                                   <p className="text-white/80 pl-2">
+                                        高リスク監視地域を常時トラッキングするために、CAM_01 および CAM_02 チャンネルが活性化されています。
+                                   </p>
+                              </div>
+
+                              <div className="space-y-3">
+                                   <h3 className="text-base font-bold text-red-500">■ メイドコントロール (Maid Dispatch)</h3>
+                                   <p className="text-white/80 pl-2">
+                                        物品搬送要請は、部屋コードと物品コードの組み合わせが一致した場合のみ有効化されます。一致しない場合は5秒間のセキュリティ保護ロックがかかります。
+                                   </p>
+                              </div>
+
+                              <div className="space-y-3 border-t border-white/5 pt-4">
+                                   <h3 className="text-base font-bold text-red-500">■ 緊急リタイア警告</h3>
+                                   <p className="text-white/80 pl-2">
+                                        危険が生じた場合、画面上部ステータスバーの『RETIRE (緊急リタイア)』ボタンを押すことで、全プログラムをセーフロック状態へ即座にリタイア移行させることができます。
+                                   </p>
+                              </div>
+                         </div>
+                    </div>
+                )}
+
+                {/* Floating click trigger to toggle text fallback */}
+                <button
+                   onClick={() => setShowTextFallback1(!showTextFallback1)}
+                   className="absolute bottom-6 right-6 px-4 py-2.5 bg-zinc-900/90 hover:bg-zinc-800 border border-white/10 hover:border-white/20 rounded-xl text-white/80 hover:text-white transition-all text-xs font-bold font-sans flex items-center gap-2 z-[60] shadow-xl"
+                >
+                     {showTextFallback1 ? "📄 PDF表示に戻す" : "📄 PDFが表示されない場合はこちら (テキスト表示)"}
+                </button>
 
                 {/* Hidden floating click trigger at the top right to open setup admin prompt */}
                 <button
@@ -1585,12 +1772,53 @@ const App: React.FC = () => {
                                  </button>
                             </div>
 
-                            <div className="flex-1 rounded-2xl overflow-hidden bg-zinc-950">
-                                 <iframe
-                                   src="./documents/doc2.pdf"
-                                   className="w-full h-full border-0"
-                                   title="管理者限定極秘データ_SEC_992.pdf"
-                                 />
+                            <div className="flex-1 rounded-2xl overflow-hidden bg-zinc-950 relative flex flex-col">
+                                 {!showTextFallback2 ? (
+                                     <iframe
+                                       src="./documents/doc2.pdf"
+                                       className="w-full h-full border-0"
+                                       title="管理者限定極秘データ_SEC_992.pdf"
+                                     />
+                                 ) : (
+                                     <div className="flex-1 bg-[#050508] p-8 overflow-y-auto font-mono text-[#eaeaea] w-full space-y-6 relative">
+                                          <div className="border-b border-red-500/30 pb-3">
+                                               <span className="text-[9px] text-red-500 font-bold uppercase tracking-[0.2em]">GOV-CORE ARCHIVE // ADMIN_SEC_992</span>
+                                               <h1 className="text-xl font-black tracking-[0.1em] text-white mt-1">管理者限定極秘データ</h1>
+                                          </div>
+
+                                          <div className="space-y-4 text-xs leading-relaxed">
+                                               <div className="p-3 bg-red-950/20 border border-red-900/30 rounded-xl space-y-1">
+                                                    <div className="text-red-400 font-bold flex items-center gap-2">
+                                                        <span>🔒 ADMIN ACCESS PASSCODE:</span>
+                                                    </div>
+                                                    <p className="text-base font-bold text-white font-mono tracking-widest pl-2">
+                                                        ADMIN_DASH
+                                                    </p>
+                                               </div>
+
+                                               <div className="space-y-2">
+                                                    <h3 className="text-xs font-bold text-red-500">■ メイドコントロール照合表</h3>
+                                                    <p className="text-white/80 pl-1">
+                                                         部屋コードおよび物品コードは、中央データベースに登録されたJSON設定に準拠します。
+                                                    </p>
+                                               </div>
+
+                                               <div className="space-y-2">
+                                                    <h3 className="text-xs font-bold text-red-500">■ システム構成情報</h3>
+                                                    <p className="text-white/80 pl-1">
+                                                         BGMの音量は localStorage.bgmVolume にて永続保存されており、いつでも再調整が可能です。
+                                                    </p>
+                                               </div>
+                                          </div>
+                                     </div>
+                                 )}
+
+                                 <button
+                                    onClick={() => setShowTextFallback2(!showTextFallback2)}
+                                    className="absolute bottom-4 right-4 px-3 py-1.5 bg-zinc-900/95 hover:bg-zinc-800 border border-white/10 rounded-lg text-white/80 hover:text-white transition-all text-[10px] font-bold font-sans z-[60]"
+                                 >
+                                      {showTextFallback2 ? "📄 PDF表示に戻す" : "📄 PDFが表示されない場合はこちら"}
+                                 </button>
                             </div>
                         </motion.div>
                     )}
@@ -1781,47 +2009,80 @@ const App: React.FC = () => {
 
                                   {/* Mock Execution Override App */}
                                   {openAppId === 'stop_execution' && (
-                                      <div className="max-w-md mx-auto text-center space-y-6 py-6">
-                                           <div className="w-16 h-16 bg-red-950/40 rounded-[20px] flex items-center justify-center mx-auto border border-red-500/20">
-                                               <ShieldAlert className="text-red-500" size={32} />
+                                      <div className="max-w-xl mx-auto text-center space-y-8 py-4 p-8 rounded-3xl border border-amber-500/30 bg-black/80 shadow-[0_0_60px_rgba(245,158,11,0.15)] relative overflow-hidden">
+                                           {/* High Tech Cybernetic Danger Grid line */}
+                                           <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-red-600 via-amber-500 to-red-600 animate-pulse" />
+
+                                           <div className="w-20 h-20 bg-amber-500/10 rounded-[24px] flex items-center justify-center mx-auto border-2 border-amber-500 shadow-[0_0_25px_rgba(245,158,11,0.3)] animate-bounce">
+                                               <ShieldAlert className="text-amber-500" size={42} />
                                            </div>
                                            <div>
-                                                <h4 className="text-sm font-bold uppercase tracking-widest text-white">緊急致死処分停止シーケンス</h4>
-                                                <p className="text-[10px] text-white/40 mt-1 uppercase">処刑停止暗号コードを入力してシステムをオーバーライドしてください。</p>
+                                                <h4 className="text-2xl font-extrabold uppercase tracking-[0.2em] text-transparent bg-clip-text bg-gradient-to-r from-amber-400 via-orange-500 to-yellow-300">
+                                                     緊急致死処分停止シーケンス
+                                                </h4>
+                                                <p className="text-xs font-black text-amber-500/90 tracking-widest mt-2 uppercase font-mono animate-pulse">
+                                                     ⚡ SYSTEM TERMINATION OVERRIDE PROTOCOL
+                                                </p>
                                            </div>
 
                                            {overrideSubmitted ? (
-                                               <div className="p-6 bg-red-950/20 border border-red-900/30 rounded-2xl flex flex-col items-center gap-2">
-                                                    <CheckCircle2 className="text-red-400 animate-pulse" size={32} />
-                                                    <span className="text-xs font-bold text-red-400 uppercase tracking-widest">{overrideText}</span>
-                                                    <span className="text-[9px] text-white/40 uppercase font-mono">STATUS: OVERRIDE_REQUESTED</span>
+                                               <div className="p-8 bg-amber-950/20 border-2 border-amber-500/40 rounded-2xl flex flex-col items-center gap-4 shadow-[0_0_30px_rgba(245,158,11,0.1)]">
+                                                    <CheckCircle2 className="text-amber-400 animate-pulse" size={48} />
+                                                    <span className="text-lg font-black text-amber-400 uppercase tracking-widest leading-relaxed">
+                                                         {overrideText}
+                                                    </span>
+                                                    <span className="text-[10px] text-white/50 uppercase font-mono tracking-widest bg-amber-500/10 px-3 py-1 rounded-full border border-amber-500/20">
+                                                         STATUS: OVERRIDE_RECEPTION_COMPLETE
+                                                    </span>
                                                </div>
                                            ) : (
-                                               <div className="space-y-4">
-                                                    <div className="p-4 rounded-2xl bg-white/5 border border-white/5 text-[11px] leading-relaxed text-white/60 text-left font-mono">
-                                                         🔒 **処刑停止申請の制限条件**:
-                                                         - この暗証コード送信機能は、残り時間が **20秒以下** になった時のみ有効化されます。
-                                                         - 送信の試行チャンスは **1回限り（ワンショット）** です。慎重に入力してください。
+                                               <div className="space-y-6">
+                                                    <div className="p-6 rounded-2xl bg-amber-950/20 border border-amber-500/20 text-xs leading-relaxed text-left font-mono space-y-3 shadow-inner">
+                                                         <div className="text-amber-400 font-bold text-sm border-b border-amber-500/20 pb-2 flex items-center gap-2">
+                                                             <span>🔒 SECURITY OVERRIDE INSTRUCTIONS:</span>
+                                                         </div>
+                                                         <ul className="space-y-2 text-white/90 list-disc list-inside">
+                                                              <li>
+                                                                   この暗証コード送信機能は、制限時間が残り <span className="text-amber-400 font-extrabold underline">20秒以下</span> に到達した時のみシステムによりロックが高度解除されます。
+                                                              </li>
+                                                              <li>
+                                                                   送信のチャンスは <span className="text-red-500 font-extrabold underline">1回限り（ワンショット）</span> です。誤入力は許されません。
+                                                              </li>
+                                                              <li>
+                                                                   正しい STOP CODE を入力し、最下部の実行ボタンまたは Enter キーを押してください。
+                                                              </li>
+                                                         </ul>
                                                     </div>
 
-                                                    <input
-                                                       type="password"
-                                                       disabled={timerSeconds === null || timerSeconds > 20}
-                                                       placeholder={timerSeconds !== null && timerSeconds > 20 ? `残り ${timerSeconds} 秒で有効化` : "STOP CODE を入力"}
-                                                       className={`w-full bg-black/50 border rounded-xl px-4 py-3 text-center outline-none focus:border-red-900 text-lg font-mono tracking-[0.4em] text-red-500 ${(timerSeconds === null || timerSeconds > 20) ? 'opacity-30 cursor-not-allowed border-white/5' : 'border-red-950/50'}`}
-                                                       value={executionOverrideInput}
-                                                       onChange={(e) => {
-                                                           setExecutionOverrideInput(e.target.value);
-                                                           if (overrideError) setOverrideError(false);
-                                                       }}
-                                                       onKeyDown={(e) => e.key === 'Enter' && handleVerifyExecutionOverride()}
-                                                    />
+                                                    <div className="relative">
+                                                        <input
+                                                           type="text"
+                                                           disabled={timerSeconds === null || timerSeconds > 20}
+                                                           placeholder={timerSeconds !== null && timerSeconds > 20 ? `🚨 残り ${timerSeconds} 秒でセキュリティ解除 🚨` : "STOP CODE を慎重に入力してください"}
+                                                           className={`w-full bg-black/90 border-2 rounded-2xl px-6 py-4 text-center outline-none focus:border-amber-400 text-xl font-extrabold font-mono tracking-[0.4em] text-amber-400 transition-all ${
+                                                               (timerSeconds === null || timerSeconds > 20)
+                                                               ? 'opacity-40 cursor-not-allowed border-white/5 bg-zinc-950'
+                                                               : 'border-amber-500/80 shadow-[0_0_30px_rgba(245,158,11,0.25)] focus:shadow-[0_0_40px_rgba(245,158,11,0.4)]'
+                                                           }`}
+                                                           value={executionOverrideInput}
+                                                           onChange={(e) => {
+                                                               setExecutionOverrideInput(e.target.value);
+                                                               if (overrideError) setOverrideError(false);
+                                                           }}
+                                                           onKeyDown={(e) => e.key === 'Enter' && handleVerifyExecutionOverride()}
+                                                        />
+                                                    </div>
+
                                                     <button
                                                       disabled={timerSeconds === null || timerSeconds > 20 || overrideSubmitted}
                                                       onClick={handleVerifyExecutionOverride}
-                                                      className={`w-full py-3 rounded-xl font-bold uppercase text-[10px] tracking-widest transition-colors ${(timerSeconds === null || timerSeconds > 20) ? 'bg-white/5 border border-white/5 text-white/20 cursor-not-allowed' : 'bg-red-950/40 hover:bg-red-950/60 border border-red-900/40 text-red-400'}`}
+                                                      className={`w-full py-4 rounded-2xl font-black uppercase text-xs tracking-[0.2em] transition-all duration-300 ${
+                                                          (timerSeconds === null || timerSeconds > 20)
+                                                          ? 'bg-white/5 border border-white/5 text-white/20 cursor-not-allowed'
+                                                          : 'bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 border-2 border-amber-400 text-white shadow-[0_0_20px_rgba(245,158,11,0.3)] hover:shadow-[0_0_35px_rgba(245,158,11,0.6)] transform hover:scale-[1.01]'
+                                                      }`}
                                                     >
-                                                      処刑停止指令を実行
+                                                      {timerSeconds !== null && timerSeconds > 20 ? "⚠️ システム保護中 (停止指令待機)" : "⚡ 処刑停止指令を実行 (OVERRIDE START)"}
                                                     </button>
                                                </div>
                                            )}
@@ -1935,6 +2196,7 @@ const App: React.FC = () => {
                       if (puzzleState === 'admin_desktop') {
                          playSynthSound('tap');
                          alert("これは謎には関係ありません");
+                         setShowExitModal(true);
                       } else {
                          playSynthSound('open');
                          setShowExitModal(true);
