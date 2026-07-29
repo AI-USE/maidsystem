@@ -203,7 +203,6 @@ const App: React.FC = () => {
   useEffect(() => {
     if ((window as any).electron) {
       (window as any).electron.send('GET_LOCAL_IP');
-      (window as any).electron.send('START_STANDBY_LOOP');
       (window as any).electron.on('LOCAL_IP_RESULT', ({ ip, port }: { ip: string, port: number }) => {
           setLocalIp(ip);
           setLocalPort(port);
@@ -388,7 +387,19 @@ const App: React.FC = () => {
     }
   };
 
+  const handlePuzzlePrepare = () => {
+    sendCommand('PUZZLE_PREPARE');
+    speakAnnouncement("謎解きの公演準備完了。スタートまでしばらくお待ちください。");
+    sendDiscordNotification("【システム通知】📢 謎解きの公演準備完了。まもなくミッションを開始します。");
+    if ((window as any).electron) {
+      (window as any).electron.send('START_STANDBY_LOOP');
+    }
+  };
+
   const handlePuzzleStart = () => {
+    if ((window as any).electron) {
+      (window as any).electron.send('STOP_STANDBY_LOOP');
+    }
     sendCommand('PUZZLE_START');
     setPuzzleTimer(420); // Starts counting down 7 minutes (420s) directly
     setPuzzleTimerPaused(false);
@@ -405,6 +416,9 @@ const App: React.FC = () => {
   };
 
   const handlePuzzleStop = () => {
+    if ((window as any).electron) {
+      (window as any).electron.send('STOP_STANDBY_LOOP');
+    }
     sendCommand('PUZZLE_STOP');
     setPuzzleTimer(null);
     setPuzzleTimerPaused(false);
@@ -431,6 +445,9 @@ const App: React.FC = () => {
   };
 
   const handlePuzzleRestart = () => {
+    if ((window as any).electron) {
+      (window as any).electron.send('STOP_STANDBY_LOOP');
+    }
     sendCommand('PUZZLE_RESTART');
     setPuzzleTimer(420); // Restarts countdown to 7 minutes (420s) directly
     setPuzzleTimerPaused(false);
@@ -1005,15 +1022,28 @@ const App: React.FC = () => {
 
                          <div className="w-full h-[1px] bg-white/10 my-4" />
 
-                         <div className="grid grid-cols-1 md:grid-cols-4 gap-6 w-full">
+                         <div className="grid grid-cols-1 md:grid-cols-5 gap-4 w-full">
                              {puzzleTimer !== null && (
-                                 <div className="col-span-1 md:col-span-4 p-6 bg-black/40 border border-white/5 rounded-3xl flex flex-col items-center justify-center gap-2">
+                                 <div className="col-span-1 md:col-span-5 p-6 bg-black/40 border border-white/5 rounded-3xl flex flex-col items-center justify-center gap-2">
                                      <span className="text-[10px] font-black uppercase tracking-widest text-white/40">制限時間カウントダウン</span>
                                      <span className="text-5xl font-mono font-black tracking-widest text-red-500 tabular-nums animate-pulse">
                                          {puzzleTimer === 0 ? '制限時間終了' : `${Math.floor(puzzleTimer / 60)}分${puzzleTimer % 60}秒`}
                                      </span>
                                  </div>
                              )}
+
+                             <button
+                                 onClick={handlePuzzlePrepare}
+                                 className="flex flex-col items-center gap-4 p-6 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/30 hover:border-blue-500/50 rounded-3xl transition-all group"
+                             >
+                                 <div className="p-4 bg-blue-500/20 text-blue-400 rounded-2xl group-hover:scale-110 transition-transform">
+                                     <Sliders size={24} />
+                                 </div>
+                                 <div className="text-center">
+                                     <div className="text-xs font-black text-blue-400 uppercase tracking-widest">謎解き準備</div>
+                                     <div className="text-[9px] text-white/40 mt-1 uppercase">Puzzle_Prepare</div>
+                                 </div>
+                             </button>
 
                              <button
                                  onClick={handlePuzzleStart}

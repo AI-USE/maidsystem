@@ -315,14 +315,14 @@ ipcMain.on('SEND_REMOTE_COMMAND', (event, { targetId, command }) => {
     }
   }
 
-  if (command.type === 'PUZZLE_START' || command.type === 'PUZZLE_RESTART') {
+  if (command.type === 'PUZZLE_START' || command.type === 'PUZZLE_RESTART' || command.type === 'PUZZLE_STOP') {
       if (standbyLoopInterval) {
           clearInterval(standbyLoopInterval);
           standbyLoopInterval = null;
       }
   }
 
-  if (command.type === 'PUZZLE_STOP') {
+  if (command.type === 'PUZZLE_PREPARE') {
       if (standbyLoopInterval) clearInterval(standbyLoopInterval);
       playDiscordTts("謎解きの公演準備完了");
       standbyLoopInterval = setInterval(() => {

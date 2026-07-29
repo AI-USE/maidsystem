@@ -12,18 +12,37 @@ interface OfflineSetupProps extends SetupProps {
 
 export const Setup: React.FC<OfflineSetupProps> = ({ onComplete, onStartOffline }) => {
   const [step, setStep] = useState(1);
-  const [deviceName, setDeviceName] = useState(localStorage.getItem('deviceName') || '');
-  const [ip, setIp] = useState(localStorage.getItem('masterUrl')?.replace('http://', '') || '');
+  const [deviceName, setDeviceName] = useState(() => {
+      const name = localStorage.getItem('deviceName');
+      if (!name || name === 'null' || name === 'undefined') return '';
+      return name;
+  });
+  const [ip, setIp] = useState(() => {
+      const saved = localStorage.getItem('masterUrl');
+      if (!saved || saved === 'null' || saved === 'undefined') return '';
+      return saved.replace('http://', '');
+  });
   const [kioskEnabled, setKioskEnabled] = useState(true);
   const [testStatus, setTestStatus] = useState<'idle' | 'testing' | 'success' | 'error'>('idle');
   const [showPasswords, setShowPasswords] = useState(false);
-  const [passwords, setPasswords] = useState({
-      exit: localStorage.getItem('pass_exit') || 'MADREST104',
-      event: localStorage.getItem('pass_event') || 'EVT_TRIGGER_99',
-      admin: localStorage.getItem('pass_admin') || 'ADMIN_DASH',
-      setup: localStorage.getItem('pass_setup') || 'ADMIN_SETUP'
+  const [passwords, setPasswords] = useState(() => {
+      const exit = localStorage.getItem('pass_exit');
+      const event = localStorage.getItem('pass_event');
+      const admin = localStorage.getItem('pass_admin');
+      const setup = localStorage.getItem('pass_setup');
+      return {
+          exit: !exit || exit === 'null' || exit === 'undefined' ? 'MADREST104' : exit,
+          event: !event || event === 'null' || event === 'undefined' ? 'EVT_TRIGGER_99' : event,
+          admin: !admin || admin === 'null' || admin === 'undefined' ? 'ADMIN_DASH' : admin,
+          setup: !setup || setup === 'null' || setup === 'undefined' ? 'ADMIN_SETUP' : setup
+      };
   });
-  const [bgmVolume, setBgmVolume] = useState<number>(parseInt(localStorage.getItem('bgmVolume') || '50'));
+  const [bgmVolume, setBgmVolume] = useState<number>(() => {
+      const saved = localStorage.getItem('bgmVolume');
+      if (!saved || saved === 'null' || saved === 'undefined') return 50;
+      const parsed = parseInt(saved);
+      return isNaN(parsed) ? 50 : parsed;
+  });
 
   // Offline Mode Patterns Configuration states
   const [offlineTargetTime, setOfflineTargetTime] = useState({ hour: '12', minute: '00', second: '00' });

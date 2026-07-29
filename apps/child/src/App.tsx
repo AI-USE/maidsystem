@@ -629,6 +629,15 @@ const App: React.FC = () => {
       case 'STOP_AUDIO':
         osContextValue.stopAudio(cmd.payload.url);
         break;
+      case 'PUZZLE_PREPARE': {
+        setPuzzleState('idle');
+        setTimeOverride(null);
+        setTimerSeconds(null);
+        setIsPaused(false);
+        setGameResult('none');
+        setPostCommentaryScreen('none');
+        break;
+      }
       case 'PUZZLE_START': {
         // Set clock exactly to 23:53:40 of today
         const targetTime = new Date();
