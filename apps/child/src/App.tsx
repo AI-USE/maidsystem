@@ -227,12 +227,12 @@ const App: React.FC = () => {
 
   const getVideoSrc = useCallback(() => {
     switch (videoType) {
-      case 'start': return "/videos/start/start.mp4";
-      case 'admin': return "/videos/admin/boot.mp4";
-      case 'correct': return "/videos/result/correct/correct.mp4";
-      case 'close': return "/videos/result/close/close.mp4";
-      case 'failed': return "/videos/result/failed/failed.mp4";
-      case 'commentary': return "/videos/commentary/commentary.mp4";
+      case 'start': return "./videos/start/start.mp4";
+      case 'admin': return "./videos/admin/boot.mp4";
+      case 'correct': return "./videos/result/correct/correct.mp4";
+      case 'close': return "./videos/result/close/close.mp4";
+      case 'failed': return "./videos/result/failed/failed.mp4";
+      case 'commentary': return "./videos/commentary/commentary.mp4";
       default: return "";
     }
   }, [videoType]);
@@ -273,6 +273,28 @@ const App: React.FC = () => {
     setVideoProgress(0);
     setVideoType(type);
     setVideoPlaying(true);
+  }, []);
+
+  const resetPuzzleStateAndInputs = useCallback(() => {
+    setDeliveredItems([]);
+    setMaidRoomInput('');
+    setMaidItemInput('');
+    setMaidDeliveryState('idle');
+    setMaidDeliveryError('');
+    setExecutionOverrideInput('');
+    setOverrideSubmitted(false);
+    setOverrideError(false);
+    setOverrideText('');
+    setExecutionAborted(false);
+    setShowPowerPrompt(false);
+    setPowerInput('');
+    setPowerError(false);
+    setPuzzleInput('');
+    setPuzzleError(false);
+    setGameResult('none');
+    setPostCommentaryScreen('none');
+    setUseMockTimerFallback(false);
+    setVideoProgress(0);
   }, []);
 
   const osContextValue = useMemo<OSContextType>(() => ({
@@ -614,15 +636,15 @@ const App: React.FC = () => {
         osContextValue.stopAudio(cmd.payload.url);
         break;
       case 'PUZZLE_PREPARE': {
+        resetPuzzleStateAndInputs();
         setPuzzleState('idle');
         setTimeOverride(null);
         setTimerSeconds(null);
         setIsPaused(false);
-        setGameResult('none');
-        setPostCommentaryScreen('none');
         break;
       }
       case 'PUZZLE_START': {
+        resetPuzzleStateAndInputs();
         // Set clock exactly to 23:53:40 of today
         const targetTime = new Date();
         targetTime.setHours(23, 53, 40, 0);
@@ -633,12 +655,6 @@ const App: React.FC = () => {
 
         // Transition to idle, then start unskippable video
         setPuzzleState('idle');
-        setPuzzleInput('');
-        setPuzzleError(false);
-        setExecutionAborted(false);
-        setIsPaused(false);
-        setGameResult('none');
-        setPostCommentaryScreen('none');
 
         // Trigger start video playback
         startVideoPlayback('start');
@@ -658,14 +674,14 @@ const App: React.FC = () => {
         break;
       }
       case 'PUZZLE_STOP':
+        resetPuzzleStateAndInputs();
         setPuzzleState('idle');
         setTimeOverride(null);
         setTimerSeconds(null);
         setIsPaused(false);
-        setGameResult('none');
-        setPostCommentaryScreen('none');
         break;
       case 'PUZZLE_RESTART': {
+        resetPuzzleStateAndInputs();
         const targetTime = new Date();
         targetTime.setHours(23, 53, 40, 0);
         setTimeOverride(targetTime);
@@ -673,14 +689,6 @@ const App: React.FC = () => {
 
         // Transition to idle, then start unskippable video
         setPuzzleState('idle');
-        setPuzzleInput('');
-        setPuzzleError(false);
-        setExecutionAborted(false);
-        setOverrideSubmitted(false);
-        setOverrideText('');
-        setIsPaused(false);
-        setGameResult('none');
-        setPostCommentaryScreen('none');
 
         // Trigger start video playback
         startVideoPlayback('start');
@@ -889,17 +897,12 @@ const App: React.FC = () => {
           setOfflineStandbyActive(false);
 
           // Trigger offline auto-start game
+          resetPuzzleStateAndInputs();
           const targetTime = new Date();
           targetTime.setHours(23, 53, 40, 0);
           setTimeOverride(targetTime);
           setTimerSeconds(420);
           setPuzzleState('idle');
-          setPuzzleInput('');
-          setPuzzleError(false);
-          setExecutionAborted(false);
-          setIsPaused(false);
-          setGameResult('none');
-          setPostCommentaryScreen('none');
 
           startVideoPlayback('start');
         }
@@ -1539,7 +1542,7 @@ const App: React.FC = () => {
             <div className="fixed inset-0 z-50 bg-black flex flex-col">
                 {/* Embedded PDF 1 viewport occupying 100% of the screen */}
                 <iframe
-                   src="/documents/doc1.pdf"
+                   src="./documents/doc1.pdf"
                    className="w-full h-full border-0 bg-black"
                    title="処刑装置起動手順_LOG_832.pdf"
                 />
@@ -1584,7 +1587,7 @@ const App: React.FC = () => {
 
                             <div className="flex-1 rounded-2xl overflow-hidden bg-zinc-950">
                                  <iframe
-                                   src="/documents/doc2.pdf"
+                                   src="./documents/doc2.pdf"
                                    className="w-full h-full border-0"
                                    title="管理者限定極秘データ_SEC_992.pdf"
                                  />
@@ -1678,7 +1681,7 @@ const App: React.FC = () => {
                                                     <video
                                                       key="cam1"
                                                       ref={cam1VideoRef}
-                                                      src="/videos/cam1.mp4"
+                                                      src="./videos/cam1.mp4"
                                                       autoPlay
                                                       loop
                                                       muted
@@ -1689,7 +1692,7 @@ const App: React.FC = () => {
                                                     <video
                                                       key="cam2"
                                                       ref={cam2VideoRef}
-                                                      src="/videos/cam2.mp4"
+                                                      src="./videos/cam2.mp4"
                                                       autoPlay
                                                       loop
                                                       muted
