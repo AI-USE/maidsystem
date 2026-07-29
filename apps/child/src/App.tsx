@@ -180,6 +180,57 @@ const App: React.FC = () => {
   const [videoPlaying, setVideoPlaying] = useState(false);
   const [videoProgress, setVideoProgress] = useState(0);
   const [videoType, setVideoType] = useState<'start' | 'admin' | 'correct' | 'close' | 'failed' | 'commentary' | 'none'>('none');
+  const [useMockTimerFallback, setUseMockTimerFallback] = useState(false);
+
+  const getVideoSrc = useCallback(() => {
+    switch (videoType) {
+      case 'start': return "/videos/start/start.mp4";
+      case 'admin': return "/videos/admin/boot.mp4";
+      case 'correct': return "/videos/result/correct/correct.mp4";
+      case 'close': return "/videos/result/close/close.mp4";
+      case 'failed': return "/videos/result/failed/failed.mp4";
+      case 'commentary': return "/videos/commentary/commentary.mp4";
+      default: return "";
+    }
+  }, [videoType]);
+
+  const handleVideoFinished = useCallback(() => {
+    setVideoPlaying(false);
+    setVideoProgress(100);
+
+    if (videoType === 'start') {
+      setPuzzleState('locked');
+    }
+    if (videoType === 'commentary') {
+      if (gameResult === 'correct') {
+        setPostCommentaryScreen('success');
+      } else {
+        setPostCommentaryScreen('failed');
+      }
+    }
+
+    const isOffline = isForcedOfflineMode || (!isConnected || !isPaired);
+    const isResultsVideo = videoType === 'correct' || videoType === 'close' || videoType === 'failed';
+
+    setVideoType('none');
+
+    if (isOffline && isResultsVideo) {
+      setTimeout(() => {
+        playSynthSound('open');
+        setVideoPlaying(true);
+        setVideoProgress(0);
+        setVideoType('commentary');
+      }, 1000);
+    }
+  }, [videoType, gameResult, isForcedOfflineMode, isConnected, isPaired]);
+
+  const startVideoPlayback = useCallback((type: 'start' | 'admin' | 'correct' | 'close' | 'failed' | 'commentary') => {
+    playSynthSound('open');
+    setUseMockTimerFallback(false);
+    setVideoProgress(0);
+    setVideoType(type);
+    setVideoPlaying(true);
+  }, []);
 
   // Admin Power Button Password Prompt State (using pass_admin)
   const [showPowerPrompt, setShowPowerPrompt] = useState(false);
@@ -415,52 +466,23 @@ const App: React.FC = () => {
       playSynthSound('open');
       setAdminPdfOpen(true);
       const videoTimeout = setTimeout(() => {
-        setVideoPlaying(true);
-        setVideoProgress(0);
-        setVideoType('admin');
+        startVideoPlayback('admin');
       }, 3000);
 
       return () => clearTimeout(videoTimeout);
     }
-  }, [puzzleState]);
+  }, [puzzleState, startVideoPlayback]);
 
-  // Handle mock video playback progress and automatic dismissal (when videoPlaying)
+  // Handle mock video playback progress and automatic dismissal (acts as a backup fallback when videoPlaying)
   useEffect(() => {
     let interval: any;
-    if (videoPlaying) {
+    const isMockFallback = useMockTimerFallback || !getVideoSrc();
+    if (videoPlaying && isMockFallback) {
       interval = setInterval(() => {
         setVideoProgress(prev => {
           if (prev >= 100) {
             clearInterval(interval);
-            setVideoPlaying(false);
-            if (videoType === 'start') {
-              setPuzzleState('locked');
-            }
-            if (videoType === 'commentary') {
-              // Transition to exit lock screen
-              if (gameResult === 'correct') {
-                setPostCommentaryScreen('success');
-              } else {
-                setPostCommentaryScreen('failed');
-              }
-            }
-
-            // Check if results video just ended and we are offline (forced or connection lost)
-            const isOffline = isForcedOfflineMode || (!isConnected || !isPaired);
-            const isResultsVideo = videoType === 'correct' || videoType === 'close' || videoType === 'failed';
-
-            setVideoType('none');
-
-            if (isOffline && isResultsVideo) {
-              // Automatically trigger commentary video
-              setTimeout(() => {
-                playSynthSound('open');
-                setVideoPlaying(true);
-                setVideoProgress(0);
-                setVideoType('commentary');
-              }, 1000);
-            }
-
+            handleVideoFinished();
             return 100;
           }
           return prev + 1; // 100 steps total, takes ~10 seconds at 100ms interval
@@ -468,7 +490,7 @@ const App: React.FC = () => {
       }, 100);
     }
     return () => clearInterval(interval);
-  }, [videoPlaying, videoType, gameResult, isForcedOfflineMode, isConnected, isPaired]);
+  }, [videoPlaying, useMockTimerFallback, getVideoSrc, handleVideoFinished]);
 
   // Execution Countdown Timer
   // Starts ticking only after preparation is complete (i.e. 'locked', 'browsing_pdf_1', or 'admin_desktop')
@@ -482,10 +504,7 @@ const App: React.FC = () => {
              // 7 minutes expiration: trigger 5-second blackout first, and 3 seconds after blackout starts, play results video.
              setTimeout(() => {
                 const outcome = gameResult !== 'none' ? gameResult : 'failed';
-                playSynthSound('open');
-                setVideoPlaying(true);
-                setVideoProgress(0);
-                setVideoType(outcome);
+                startVideoPlayback(outcome);
              }, 3000);
              return 0;
           }
@@ -494,7 +513,7 @@ const App: React.FC = () => {
       }, 1000);
     }
     return () => clearInterval(interval);
-  }, [timerSeconds, puzzleState, isPaused, videoPlaying, gameResult]);
+  }, [timerSeconds, puzzleState, isPaused, videoPlaying, gameResult, startVideoPlayback]);
 
   useEffect(() => {
     if ((window as any).electron) {
@@ -629,9 +648,7 @@ const App: React.FC = () => {
         setPostCommentaryScreen('none');
 
         // Trigger start video playback
-        setVideoPlaying(true);
-        setVideoProgress(0);
-        setVideoType('start');
+        startVideoPlayback('start');
         break;
       }
       case 'MAID_DELIVERY_CLEARED': {
@@ -673,9 +690,7 @@ const App: React.FC = () => {
         setPostCommentaryScreen('none');
 
         // Trigger start video playback
-        setVideoPlaying(true);
-        setVideoProgress(0);
-        setVideoType('start');
+        startVideoPlayback('start');
         break;
       }
       case 'PUZZLE_PAUSE': {
@@ -687,37 +702,23 @@ const App: React.FC = () => {
         break;
       }
       case 'PUZZLE_BROADCAST_VIDEO': {
-        playSynthSound('open');
-        setVideoPlaying(true);
-        setVideoProgress(0);
+        startVideoPlayback('start');
         break;
       }
       case 'PUZZLE_RESULT_CORRECT': {
-        playSynthSound('open');
-        setVideoPlaying(true);
-        setVideoProgress(0);
-        setVideoType('correct');
+        startVideoPlayback('correct');
         break;
       }
       case 'PUZZLE_RESULT_CLOSE': {
-        playSynthSound('open');
-        setVideoPlaying(true);
-        setVideoProgress(0);
-        setVideoType('close');
+        startVideoPlayback('close');
         break;
       }
       case 'PUZZLE_RESULT_FAILED': {
-        playSynthSound('open');
-        setVideoPlaying(true);
-        setVideoProgress(0);
-        setVideoType('failed');
+        startVideoPlayback('failed');
         break;
       }
       case 'PUZZLE_RESULT_COMMENTARY': {
-        playSynthSound('open');
-        setVideoPlaying(true);
-        setVideoProgress(0);
-        setVideoType('commentary');
+        startVideoPlayback('commentary');
         break;
       }
       case 'PUZZLE_RETIRE': {
@@ -907,9 +908,7 @@ const App: React.FC = () => {
           setGameResult('none');
           setPostCommentaryScreen('none');
 
-          setVideoPlaying(true);
-          setVideoProgress(0);
-          setVideoType('start');
+          startVideoPlayback('start');
         }
       }, 1000);
     }
@@ -1387,35 +1386,57 @@ const App: React.FC = () => {
                        {/* Interference Static Static Bars */}
                        <div className="absolute inset-0 opacity-[0.03] bg-[radial-gradient(#ffffff_2px,transparent_2px)] [background-size:16px_16px]" />
 
-                       <div className="text-center space-y-6 max-w-xl relative z-10">
-                            <motion.div
-                              animate={{ scale: [1, 1.05, 1] }}
-                              transition={{ repeat: Infinity, duration: 2 }}
-                              className="w-20 h-20 bg-red-950/20 border border-red-500 rounded-full flex items-center justify-center mx-auto text-red-500 shadow-[0_0_30px_rgba(239,68,68,0.2)]"
-                            >
-                                 <ShieldAlert size={40} className="animate-bounce" />
-                            </motion.div>
+                       {!useMockTimerFallback && getVideoSrc() ? (
+                            <video
+                              src={getVideoSrc()}
+                              autoPlay
+                              playsInline
+                              className="absolute inset-0 w-full h-full object-cover z-0"
+                              onTimeUpdate={(e) => {
+                                  const el = e.currentTarget;
+                                  if (el.duration) {
+                                      setVideoProgress((el.currentTime / el.duration) * 100);
+                                  }
+                              }}
+                              onEnded={() => {
+                                  handleVideoFinished();
+                              }}
+                              onError={() => {
+                                  console.warn(`Video asset not found or failed to load: ${getVideoSrc()}. Falling back to simulated cyber progress overlay.`);
+                                  setUseMockTimerFallback(true);
+                              }}
+                            />
+                       ) : (
+                            <div className="text-center space-y-6 max-w-xl relative z-10">
+                                 <motion.div
+                                   animate={{ scale: [1, 1.05, 1] }}
+                                   transition={{ repeat: Infinity, duration: 2 }}
+                                   className="w-20 h-20 bg-red-950/20 border border-red-500 rounded-full flex items-center justify-center mx-auto text-red-500 shadow-[0_0_30px_rgba(239,68,68,0.2)]"
+                                 >
+                                      <ShieldAlert size={40} className="animate-bounce" />
+                                 </motion.div>
 
-                            <div>
-                                 <h1 className="text-2xl font-black text-white tracking-[0.3em] uppercase">{getVideoTitle()}</h1>
-                                 <p className="text-xs text-red-500/80 uppercase font-bold tracking-widest mt-2">
-                                      {getVideoSub()}
-                                 </p>
-                            </div>
+                                 <div>
+                                      <h1 className="text-2xl font-black text-white tracking-[0.3em] uppercase">{getVideoTitle()}</h1>
+                                      <p className="text-xs text-red-500/80 uppercase font-bold tracking-widest mt-2">
+                                           {getVideoSub()}
+                                      </p>
+                                 </div>
 
-                            <div className="space-y-2 p-6 bg-black/60 rounded-2xl border border-white/5 text-left text-[11px] leading-relaxed text-white/60">
-                                 <div>[SYSTEM_STATUS] {getVideoStatus()}</div>
-                                 <div className="text-red-500 font-bold animate-pulse">[WARN] TERMINAL INTERACTION IS RESTRICTED.</div>
+                                 <div className="space-y-2 p-6 bg-black/60 rounded-2xl border border-white/5 text-left text-[11px] leading-relaxed text-white/60">
+                                      <div>[SYSTEM_STATUS] {getVideoStatus()}</div>
+                                      <div className="text-red-500 font-bold animate-pulse">[WARN] TERMINAL INTERACTION IS RESTRICTED.</div>
+                                 </div>
                             </div>
-                       </div>
+                       )}
 
                        {/* Video Progress Overlay in Video Panel */}
-                       <div className="absolute bottom-6 inset-x-8 flex items-center gap-6">
-                            <span className="text-[10px] text-white/40 tracking-widest">00:{String(Math.floor((videoProgress / 100) * 12)).padStart(2, '0')}</span>
+                       <div className="absolute bottom-6 inset-x-8 flex items-center gap-6 z-10">
+                            <span className="text-[10px] text-white/40 tracking-widest">{String(Math.floor(videoProgress))}%</span>
                             <div className="flex-1 h-1.5 bg-white/10 rounded-full overflow-hidden">
                                  <div className="h-full bg-red-500 transition-all duration-100" style={{ width: `${videoProgress}%` }} />
                             </div>
-                            <span className="text-[10px] text-white/40 tracking-widest">00:12</span>
+                            <span className="text-[10px] text-white/40 tracking-widest">100%</span>
                        </div>
                   </div>
 
