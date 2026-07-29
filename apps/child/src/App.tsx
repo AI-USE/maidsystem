@@ -158,12 +158,6 @@ const App: React.FC = () => {
   const [timeOverride, setTimeOverride] = useState<Date | null>(null);
 
   // Puzzle State Machine
-  // 'idle': Setup / Initial phase
-  // 'locked': Fullscreen locked screen overlay, 7-minute timer, clock forced to 23:53:40
-  // 'browsing_pdf_1': First PDF displayed. Standard desktop hidden. Footer has only passworded power button.
-  // 'boot_loading': Loading sequence screen for GOV-CORE OS
-  // 'admin_desktop': High-security Admin Desktop showing 3 big software icons + PDF Viewer 2
-  // 'retired': Emergency Retired State
   const [puzzleState, setPuzzleState] = useState<'idle' | 'locked' | 'browsing_pdf_1' | 'boot_loading' | 'admin_desktop' | 'retired'>('idle');
   const [puzzleInput, setPuzzleInput] = useState('');
   const [showPuzzleInputRaw, setShowPuzzleInputRaw] = useState(false);
@@ -181,6 +175,55 @@ const App: React.FC = () => {
   const [videoProgress, setVideoProgress] = useState(0);
   const [videoType, setVideoType] = useState<'start' | 'admin' | 'correct' | 'close' | 'failed' | 'commentary' | 'none'>('none');
   const [useMockTimerFallback, setUseMockTimerFallback] = useState(false);
+
+  // Admin Power Button Password Prompt State (using pass_admin)
+  const [showPowerPrompt, setShowPowerPrompt] = useState(false);
+  const [powerInput, setPowerInput] = useState('');
+  const [powerError, setPowerError] = useState(false);
+
+  // Admin Mock Application Windows Open States
+  const [openAppId, setOpenAppId] = useState<string | null>(null);
+
+  // Security Camera Active Channel (1 or 2)
+  const [activeCamChannel, setActiveCamChannel] = useState<number>(1);
+  const cam1VideoRef = useRef<HTMLVideoElement>(null);
+  const cam2VideoRef = useRef<HTMLVideoElement>(null);
+
+  // Maid controls state
+  const [maidRoomInput, setMaidRoomInput] = useState('');
+  const [maidItemInput, setMaidItemInput] = useState('');
+  const [maidDeliveryState, setMaidDeliveryState] = useState<'idle' | 'testing' | 'delivering' | 'error'>('idle');
+  const [maidDeliveryError, setMaidDeliveryError] = useState('');
+  const [maidTimer, setMaidTimer] = useState(0);
+  const [deliveredItemCodes, setDeliveredItems] = useState<string[]>([]);
+
+  // Results & Post-Commentary State
+  const [gameResult, setGameResult] = useState<'none' | 'correct' | 'close' | 'failed'>('none');
+  const [postCommentaryScreen, setPostCommentaryScreen] = useState<'none' | 'success' | 'failed'>('none');
+
+  // Execution stop state mock (Only allowed <= 20s, exactly 1 attempt)
+  const [executionOverrideInput, setExecutionOverrideInput] = useState('');
+  const [executionAborted, setExecutionAborted] = useState(false);
+  const [overrideError, setOverrideError] = useState(false);
+  const [overrideSubmitted, setOverrideSubmitted] = useState(false);
+  const [overrideText, setOverrideText] = useState('');
+
+  // Remote state
+  const [cameraActive, setCameraActive] = useState(false);
+  const [cameraFps, setCameraFps] = useState(10);
+  const [isFrozen, setIsFrozen] = useState(false);
+  const [errorPopup, setErrorPopup] = useState<string | null>(null);
+  const [notification, setNotification] = useState<string | null>(null);
+  const [timerSeconds, setTimerSeconds] = useState<number | null>(null);
+  const [remoteLogs, setRemoteLogs] = useState<string[]>([]);
+
+  // Offline/Forced-Offline patterns
+  const [isForcedOfflineMode, setIsForcedOfflineMode] = useState(false);
+  const [offlineScheduledTime, setOfflineScheduledTime] = useState<{ hour: string; minute: string; second: string } | null>(null);
+  const [offlineStandbyActive, setOfflineStandbyActive] = useState(false);
+
+  const { isConnected, isPaired, lastCommand, emit } = useRemoteControl(isForcedOfflineMode ? null : masterUrl);
+  const audioRefs = useRef<{ [key: string]: HTMLAudioElement }>({});
 
   const getVideoSrc = useCallback(() => {
     switch (videoType) {
@@ -231,65 +274,6 @@ const App: React.FC = () => {
     setVideoType(type);
     setVideoPlaying(true);
   }, []);
-
-  // Admin Power Button Password Prompt State (using pass_admin)
-  const [showPowerPrompt, setShowPowerPrompt] = useState(false);
-  const [powerInput, setPowerInput] = useState('');
-  const [powerError, setPowerError] = useState(false);
-
-  // Admin Mock Application Windows Open States
-  const [openAppId, setOpenAppId] = useState<string | null>(null);
-
-  // Security Camera Active Channel (1 or 2)
-  const [activeCamChannel, setActiveCamChannel] = useState<number>(1);
-  const cam1VideoRef = useRef<HTMLVideoElement>(null);
-  const cam2VideoRef = useRef<HTMLVideoElement>(null);
-
-  // Maid controls state
-  const [maidRoomInput, setMaidRoomInput] = useState('');
-  const [maidItemInput, setMaidItemInput] = useState('');
-  const [maidDeliveryState, setMaidDeliveryState] = useState<'idle' | 'testing' | 'delivering' | 'error'>('idle');
-  const [maidDeliveryError, setMaidDeliveryError] = useState('');
-  const [maidTimer, setMaidTimer] = useState(0);
-  const [deliveredItemCodes, setDeliveredItems] = useState<string[]>([]);
-
-  // Results & Post-Commentary State
-  const [gameResult, setGameResult] = useState<'none' | 'correct' | 'close' | 'failed'>('none');
-  const [postCommentaryScreen, setPostCommentaryScreen] = useState<'none' | 'success' | 'failed'>('none');
-
-  useEffect(() => {
-    let interval: any;
-    if (maidTimer > 0) {
-      interval = setInterval(() => {
-        setMaidTimer(prev => prev - 1);
-      }, 1000);
-    }
-    return () => clearInterval(interval);
-  }, [maidTimer]);
-
-  // Execution stop state mock (Only allowed <= 20s, exactly 1 attempt)
-  const [executionOverrideInput, setExecutionOverrideInput] = useState('');
-  const [executionAborted, setExecutionAborted] = useState(false);
-  const [overrideError, setOverrideError] = useState(false);
-  const [overrideSubmitted, setOverrideSubmitted] = useState(false);
-  const [overrideText, setOverrideText] = useState('');
-
-  // Remote state
-  const [cameraActive, setCameraActive] = useState(false);
-  const [cameraFps, setCameraFps] = useState(10);
-  const [isFrozen, setIsFrozen] = useState(false);
-  const [errorPopup, setErrorPopup] = useState<string | null>(null);
-  const [notification, setNotification] = useState<string | null>(null);
-  const [timerSeconds, setTimerSeconds] = useState<number | null>(null);
-  const [remoteLogs, setRemoteLogs] = useState<string[]>([]);
-
-  // Offline/Forced-Offline patterns
-  const [isForcedOfflineMode, setIsForcedOfflineMode] = useState(false);
-  const [offlineScheduledTime, setOfflineScheduledTime] = useState<{ hour: string; minute: string; second: string } | null>(null);
-  const [offlineStandbyActive, setOfflineStandbyActive] = useState(false);
-
-  const { isConnected, isPaired, lastCommand, emit } = useRemoteControl(isForcedOfflineMode ? null : masterUrl);
-  const audioRefs = useRef<{ [key: string]: HTMLAudioElement }>({});
 
   const osContextValue = useMemo<OSContextType>(() => ({
     log: (msg) => setRemoteLogs(prev => [...prev, msg]),
