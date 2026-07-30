@@ -205,7 +205,7 @@ const App: React.FC = () => {
         // Announce termination
         else if (next === 0) {
           setMasterEndTimestamp(null);
-          setMasterPuzzlePhase('waiting_commentary');
+          setMasterPuzzlePhase('playing'); // Maintain playing state until child reports RESULTS_VIDEO_FINISHED
 
           const correctList = ["OVERRIDE_SUCCESS", "EXEC_STOP_99"];
           const closeList = ["OVERRIDE_CLOSE", "EXEC_STOP_98"];
@@ -263,6 +263,10 @@ const App: React.FC = () => {
           ...prev,
           [deviceId]: [...(prev[deviceId] || []), text]
         }));
+
+        if (text.includes('RESULTS_VIDEO_FINISHED')) {
+           setMasterPuzzlePhase('waiting_commentary');
+        }
 
         if (text.includes('GAME_START_TRIGGERED')) {
            speakAnnouncement("ゲームスタート。ミッションを開始します。");

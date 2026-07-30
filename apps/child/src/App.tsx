@@ -124,10 +124,16 @@ const playSynthSound = (type: 'tap' | 'type' | 'open' | 'success' | 'bgm') => {
              osc.stop(ctx.currentTime + idx * 0.1 + 0.5);
          });
      } else if (type === 'bgm') {
-         if (bgmAudioRef.current || bgmOscillatorRef.current) return; // Already running
+         if (bgmAudioRef.current) {
+             if (bgmAudioRef.current.paused) {
+                 bgmAudioRef.current.play().catch(e => console.log("BGM play resume catch:", e));
+             }
+             return;
+         }
+         if (bgmOscillatorRef.current) return; // Already running
 
          const volumeValue = parseFloat(localStorage.getItem('bgmVolume') || '50') / 100;
-         const audio = new Audio('bgm.mp3');
+         const audio = new Audio('./bgm.mp3');
          audio.loop = true;
          audio.volume = volumeValue;
          bgmAudioRef.current = audio;
@@ -217,6 +223,15 @@ const App: React.FC = () => {
   const [activeCamChannel, setActiveCamChannel] = useState<number>(1);
   const cam1VideoRef = useRef<HTMLVideoElement>(null);
   const cam2VideoRef = useRef<HTMLVideoElement>(null);
+  const activeVideoRef = useRef<HTMLVideoElement>(null);
+
+  useEffect(() => {
+    if (videoPlaying && activeVideoRef.current) {
+        activeVideoRef.current.play().catch(e => {
+            console.warn("Explicit video play failed or was blocked by browser. Retrying on interaction.", e);
+        });
+    }
+  }, [videoPlaying, videoType]);
 
   // Maid controls state
   const [maidRoomInput, setMaidRoomInput] = useState('');
@@ -295,6 +310,10 @@ const App: React.FC = () => {
 
     const isOffline = isForcedOfflineMode || (!isConnected || !isPaired);
     const isResultsVideo = videoType === 'correct' || videoType === 'close' || videoType === 'failed';
+
+    if (isResultsVideo && !isOffline) {
+        emit('CONNECTION_MSG', { text: 'RESULTS_VIDEO_FINISHED' });
+    }
 
     setVideoType('none');
 
@@ -375,6 +394,10 @@ const App: React.FC = () => {
              playSynthSound('bgm');
          }
          playSynthSound('tap');
+
+         if (videoPlaying && activeVideoRef.current && activeVideoRef.current.paused) {
+             activeVideoRef.current.play().catch(e => console.log("Video interaction play resume catch:", e));
+         }
     };
     const handleGlobalKeydown = (e: KeyboardEvent) => {
          // If typing in any input/textarea, play mechanical key ticks
@@ -404,7 +427,7 @@ const App: React.FC = () => {
 
       const playExitBgm = () => {
          const volumeValue = parseFloat(localStorage.getItem('bgmVolume') || '50') / 100;
-         const audio = new Audio('bgm_exit.mp3');
+         const audio = new Audio('./bgm_exit.mp3');
          audio.loop = true;
          audio.volume = volumeValue;
          bgmAudioRef.current = audio;
@@ -611,11 +634,21 @@ const App: React.FC = () => {
               setShowExitModal(false);
               setExitPassword('');
               setPasswordError(false);
+          } else if (action === 'BOOT_ADMIN_DESKTOP') {
+              console.log('Admin Desktop booted via password');
+              setShowExitModal(false);
+              setExitPassword('');
+              setPasswordError(false);
+              setPuzzleState('boot_loading');
+              setTimeout(() => {
+                 setPuzzleState('admin_desktop');
+              }, 5000);
           } else if (action === 'TRIGGER_EVENT') {
               console.log('Event Triggered via Password');
               setShowExitModal(false);
               setExitPassword('');
               setPasswordError(false);
+              setPuzzleState('browsing_pdf_1');
           }
       };
 
@@ -1512,6 +1545,7 @@ const App: React.FC = () => {
 
                        {!useMockTimerFallback && getVideoSrc() ? (
                             <video
+                              ref={activeVideoRef}
                               src={getVideoSrc()}
                               autoPlay
                               playsInline
@@ -2441,17 +2475,7 @@ const App: React.FC = () => {
                 </button>
                 <button
                     onClick={() => {
-                       // Check custom setup password first
-                       const customSetup = localStorage.getItem('pass_setup') || 'ADMIN_SETUP';
-                       if (exitPassword === customSetup) {
-                           playSynthSound('success');
-                           setShowSetup(true);
-                           setShowExitModal(false);
-                           setExitPassword('');
-                           setPasswordError(false);
-                       } else {
-                           handleVerifyPassword();
-                       }
+                       handleVerifyPassword();
                     }}
                     className="flex-1 py-3 rounded-xl bg-white text-black font-bold text-xs uppercase tracking-widest hover:bg-white/90 transition-all"
                 >
