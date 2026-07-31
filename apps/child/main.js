@@ -124,6 +124,11 @@ ipcMain.on('VERIFY_SETUP_PASSWORD', (event, password) => {
   }
 });
 
+ipcMain.on('EXIT_APP', () => {
+  isAllowExit = true;
+  app.quit();
+});
+
 ipcMain.on('SET_KIOSK', (event, enabled) => {
     kioskMode = enabled;
     if (mainWindow) {

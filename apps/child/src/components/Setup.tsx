@@ -56,6 +56,17 @@ export const Setup: React.FC<OfflineSetupProps> = ({ onComplete, onStartOffline,
       };
   });
 
+  useEffect(() => {
+    if (step === 1) {
+      const activeDate = new Date();
+      setOfflineTargetTime({
+          hour: String(activeDate.getHours()).padStart(2, '0'),
+          minute: String(activeDate.getMinutes()).padStart(2, '0'),
+          second: String(activeDate.getSeconds()).padStart(2, '0')
+      });
+    }
+  }, [step]);
+
   const testConnection = async () => {
     setTestStatus('testing');
 

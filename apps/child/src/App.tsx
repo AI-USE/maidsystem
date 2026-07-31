@@ -37,6 +37,114 @@ const synthContextRef: { current: AudioContext | null } = { current: null };
 const bgmOscillatorRef: { current: OscillatorNode | null } = { current: null };
 const bgmAudioRef: { current: HTMLAudioElement | null } = { current: null };
 
+const getAudioDeviceId = async (preferType: 'headphone' | 'speaker'): Promise<string | null> => {
+  try {
+     // Request temporary permission to read labels
+     try {
+       await navigator.mediaDevices.getUserMedia({ audio: true });
+     } catch (err) {
+       console.log("Mic permission warning inside getAudioDeviceId:", err);
+     }
+
+     const devices = await navigator.mediaDevices.enumerateDevices();
+     const audioOutputs = devices.filter(device => device.kind === 'audiooutput');
+
+     let targetDevice = null;
+     if (preferType === 'headphone') {
+         targetDevice = audioOutputs.find(d =>
+             d.label.toLowerCase().includes('headphone') ||
+             d.label.toLowerCase().includes('earphone') ||
+             d.label.toLowerCase().includes('イヤホン') ||
+             d.label.toLowerCase().includes('ヘッドホン') ||
+             d.label.toLowerCase().includes('headset')
+         );
+     } else {
+         targetDevice = audioOutputs.find(d =>
+             d.label.toLowerCase().includes('speaker') ||
+             d.label.toLowerCase().includes('built-in') ||
+             d.label.toLowerCase().includes('internal') ||
+             d.label.toLowerCase().includes('スピーカー') ||
+             d.label.toLowerCase().includes('realtek')
+         );
+     }
+
+     return targetDevice ? targetDevice.deviceId : null;
+  } catch (err) {
+     console.error("Error enumerating audio devices:", err);
+     return null;
+  }
+};
+
+const routeAudioToDevice = async (audioElement: HTMLAudioElement, preferType: 'headphone' | 'speaker') => {
+  try {
+     if (!audioElement || typeof (audioElement as any).setSinkId !== 'function') {
+         return;
+     }
+
+     const deviceId = await getAudioDeviceId(preferType);
+     if (deviceId) {
+         console.log(`Setting ${preferType} device sink ID: ${deviceId}`);
+         await (audioElement as any).setSinkId(deviceId);
+     } else {
+         console.log(`No specific ${preferType} device found. Using system default.`);
+     }
+  } catch (err) {
+     console.error(`Error in routeAudioToDevice for ${preferType}:`, err);
+  }
+};
+
+const playSpeakerAlarmSynth = async (type: 'siren' | 'chime') => {
+  try {
+     const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+
+     // Determine if offline
+     const isOffline = localStorage.getItem('isOffline') === 'true' || true;
+     if (isOffline && typeof (ctx as any).setSinkId === 'function') {
+         const speakerId = await getAudioDeviceId('speaker');
+         if (speakerId) {
+             await (ctx as any).setSinkId(speakerId);
+         }
+     }
+
+     if (type === 'siren') {
+         // Create a loud sweeping siren sound
+         const osc = ctx.createOscillator();
+         const gain = ctx.createGain();
+         osc.type = 'sawtooth';
+
+         // Siren sweep
+         osc.frequency.setValueAtTime(400, ctx.currentTime);
+         osc.frequency.linearRampToValueAtTime(800, ctx.currentTime + 0.4);
+         osc.frequency.linearRampToValueAtTime(400, ctx.currentTime + 0.8);
+
+         gain.gain.setValueAtTime(1.0, ctx.currentTime); // MAX VOLUME
+         gain.gain.linearRampToValueAtTime(1.0, ctx.currentTime + 0.7);
+         gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.8);
+
+         osc.connect(gain);
+         gain.connect(ctx.destination);
+         osc.start();
+         osc.stop(ctx.currentTime + 0.8);
+     } else {
+         // High-volume chime chord
+         [523.25, 659.25, 783.99].forEach((freq, idx) => {
+             const osc = ctx.createOscillator();
+             const gain = ctx.createGain();
+             osc.type = 'sine';
+             osc.frequency.setValueAtTime(freq, ctx.currentTime);
+             gain.gain.setValueAtTime(1.0, ctx.currentTime); // MAX VOLUME
+             gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 1.2);
+             osc.connect(gain);
+             gain.connect(ctx.destination);
+             osc.start();
+             osc.stop(ctx.currentTime + 1.2);
+         });
+     }
+  } catch (err) {
+     console.error("playSpeakerAlarmSynth error:", err);
+  }
+};
+
 const playRhythmTick = (freq = 880, duration = 0.1) => {
   try {
      if (!synthContextRef.current) {
@@ -137,6 +245,7 @@ const playSynthSound = (type: 'tap' | 'type' | 'open' | 'success' | 'bgm') => {
          audio.loop = true;
          audio.volume = volumeValue;
          bgmAudioRef.current = audio;
+         routeAudioToDevice(audio, 'headphone');
 
          audio.play()
            .then(() => {
@@ -255,6 +364,22 @@ const App: React.FC = () => {
   const [maidDeliveryError, setMaidDeliveryError] = useState('');
   const [maidTimer, setMaidTimer] = useState(0);
   const [deliveredItemCodes, setDeliveredItems] = useState<string[]>([]);
+
+  useEffect(() => {
+    let interval: any;
+    if (maidTimer > 0) {
+      interval = setInterval(() => {
+        setMaidTimer(prev => {
+          if (prev <= 1) {
+            setMaidDeliveryState('idle');
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    }
+    return () => clearInterval(interval);
+  }, [maidTimer]);
 
   // Results & Post-Commentary State
   const [gameResult, setGameResult] = useState<'none' | 'correct' | 'close' | 'failed'>('none');
@@ -446,6 +571,7 @@ const App: React.FC = () => {
          audio.loop = true;
          audio.volume = volumeValue;
          bgmAudioRef.current = audio;
+         routeAudioToDevice(audio, 'headphone');
          audio.play().catch(err => {
              console.warn("Could not play bgm_exit.mp3, falling back to synthesized exit drone:", err);
              bgmAudioRef.current = null;
@@ -654,6 +780,7 @@ const App: React.FC = () => {
        if (bgmAudioRef.current) bgmAudioRef.current.pause();
 
        const playVocalAlarm = () => {
+          playSpeakerAlarmSynth('siren');
           if ('speechSynthesis' in window) {
               window.speechSynthesis.cancel();
               const utterance = new SpeechSynthesisUtterance("警告、緊急リタイアが実行されました。スタッフを呼び出してください。");
@@ -691,6 +818,7 @@ const App: React.FC = () => {
        const itemName = matched ? matched.name : '物品';
 
        const speakDelivering = () => {
+          playSpeakerAlarmSynth('chime');
           if ('speechSynthesis' in window) {
               window.speechSynthesis.cancel();
 
@@ -1005,31 +1133,65 @@ const App: React.FC = () => {
 
   const handlePowerVerifyPassword = () => {
     const adminPass = localStorage.getItem('pass_admin') || 'ADMIN_DASH';
-    if (powerInput === adminPass) {
-      playSynthSound('success');
-      setShowPowerPrompt(false);
-      setPowerInput('');
-      setPowerError(false);
+    const exitPass = localStorage.getItem('pass_exit') || 'MADREST104';
+    const setupPass = localStorage.getItem('pass_setup') || 'ADMIN_SETUP';
 
-      const isOffline = isForcedOfflineMode || (!isConnected || !isPaired);
-      if (isOffline) {
-          // If offline mode, reset/restart the game back to setup wizard!
-          resetPuzzleStateAndInputs();
-          setPuzzleState('idle');
-          setOfflineStandbyActive(false);
-          setOfflineScheduledTime(null);
-          setIsForcedOfflineMode(false);
-          setShowSetup(true);
+    if (puzzleState === 'admin_desktop') {
+      if (powerInput === exitPass) {
+        playSynthSound('success');
+        setShowPowerPrompt(false);
+        setPowerInput('');
+        setPowerError(false);
+        if ((window as any).electron) {
+          (window as any).electron.send('EXIT_APP');
+        } else {
+          alert('System shutdown initiated (Web/Mock).');
+        }
       } else {
-          // Start Admin Boot Sequence (Reduced to 3 seconds as requested!)
-          setPuzzleState('boot_loading');
-          setTimeout(() => {
-             setPuzzleState('admin_desktop');
-             emit('CONNECTION_MSG', { text: 'GOV-CORE OS: Admin mode booted successfully.' });
-          }, 3000);
+        setPowerError(true);
       }
     } else {
-      setPowerError(true);
+      if (powerInput === adminPass) {
+        // Restrict admin password verification to only specified active event phases (locked, browsing_pdf_1)
+        if (puzzleState !== 'locked' && puzzleState !== 'browsing_pdf_1') {
+            setPowerError(true);
+            return;
+        }
+
+        playSynthSound('success');
+        setShowPowerPrompt(false);
+        setPowerInput('');
+        setPowerError(false);
+
+        const isOffline = isForcedOfflineMode || (!isConnected || !isPaired);
+        if (isOffline) {
+            resetPuzzleStateAndInputs();
+            setPuzzleState('idle');
+            setOfflineStandbyActive(false);
+            setOfflineScheduledTime(null);
+            setIsForcedOfflineMode(false);
+            setShowSetup(true);
+        } else {
+            setPuzzleState('boot_loading');
+            setTimeout(() => {
+               setPuzzleState('admin_desktop');
+               emit('CONNECTION_MSG', { text: 'GOV-CORE OS: Admin mode booted successfully.' });
+            }, 3000);
+        }
+      } else if (powerInput === setupPass) {
+        playSynthSound('success');
+        setShowPowerPrompt(false);
+        setPowerInput('');
+        setPowerError(false);
+        resetPuzzleStateAndInputs();
+        setPuzzleState('idle');
+        setOfflineStandbyActive(false);
+        setOfflineScheduledTime(null);
+        setIsForcedOfflineMode(false);
+        setShowSetup(true);
+      } else {
+        setPowerError(true);
+      }
     }
   };
 
@@ -1039,6 +1201,14 @@ const App: React.FC = () => {
      setMaidDeliveryState('testing');
 
      setTimeout(() => {
+         const alreadyDelivered = deliveredItemCodes.includes(maidItemInput);
+         if (alreadyDelivered) {
+             setMaidDeliveryError("すでに配達済みです");
+             setMaidDeliveryState('error');
+             setMaidTimer(5);
+             return;
+         }
+
          const matched = maidItemsData.find(entry => entry.roomCode === maidRoomInput && entry.itemCode === maidItemInput);
 
          if (matched) {
@@ -1322,6 +1492,8 @@ const App: React.FC = () => {
       default: return "CRYPTO EXPIRED. DISSOLUTION TIME REACHED 0.";
     }
   };
+
+  const showBars = !videoPlaying && puzzleState !== 'idle' && puzzleState !== 'boot_loading';
 
   return (
     <OSContext.Provider value={osContextValue}>
@@ -1730,69 +1902,71 @@ const App: React.FC = () => {
       />
 
       {/* 1. Status Bar (Top) */}
-      <header className={`absolute top-0 left-0 w-full h-12 flex items-center justify-between px-8 z-50 bg-black/40 border-b border-red-950/20 backdrop-blur-md ${puzzleState === 'browsing_pdf_1' ? 'hidden' : ''}`}>
-        <div className="absolute top-4 left-6 flex items-center gap-2 pointer-events-none opacity-80">
-            <div className="w-1.5 h-1.5 rounded-full bg-red-600 animate-pulse" />
-            <span className="text-[9px] font-black text-red-600 tracking-[0.2em]">SECURE_GRID</span>
-        </div>
-
-        <div className="flex items-center gap-6 ml-24">
-          <div className="flex items-center gap-2 opacity-80">
-            <Cpu size={16} className="text-red-500" />
-            <span className="text-xs font-bold tracking-widest uppercase">GOV-CORE OS v5.0</span>
-          </div>
-          <div className={`flex items-center gap-2 px-3 py-1 rounded-full bg-white/5 border border-white/5 ${isConnected ? 'text-red-500' : 'text-white/20'}`}>
-            {isConnected ? <Wifi size={14} /> : <WifiOff size={14} />}
-            <span className="text-[10px] font-bold uppercase tracking-tighter">
-              {isConnected ? '接続確立' : '未同期'}
-            </span>
+      {showBars && (
+        <header className="fixed top-0 left-0 w-full h-12 flex items-center justify-between px-8 z-[10000] bg-[#050508]/90 border-b border-red-950/20 backdrop-blur-md">
+          <div className="absolute top-4 left-6 flex items-center gap-2 pointer-events-none opacity-80">
+              <div className="w-1.5 h-1.5 rounded-full bg-red-600 animate-pulse" />
+              <span className="text-[9px] font-black text-red-600 tracking-[0.2em]">SECURE_GRID</span>
           </div>
 
-          {/* Emergency Retire Trigger Button (Displayed persistently unless retired orTerminated) */}
-          {puzzleState !== 'idle' && puzzleState !== 'retired' && (
-              <button
-                onClick={() => {
-                    playSynthSound('open');
-                    setShowRetireConfirm(true);
-                }}
-                className="px-4 py-1 rounded-full bg-red-950/40 border border-red-500/30 text-red-500 text-[10px] font-bold uppercase tracking-widest hover:bg-red-950/70 transition-all flex items-center gap-1.5"
-              >
-                   <ShieldAlert size={12} />
-                   緊急リタイア
-              </button>
-          )}
-        </div>
+          <div className="flex items-center gap-6 ml-24">
+            <div className="flex items-center gap-2 opacity-80">
+              <Cpu size={16} className="text-red-500" />
+              <span className="text-xs font-bold tracking-widest uppercase">GOV-CORE OS v5.0</span>
+            </div>
+            <div className={`flex items-center gap-2 px-3 py-1 rounded-full bg-white/5 border border-white/5 ${isConnected ? 'text-red-500' : 'text-white/20'}`}>
+              {isConnected ? <Wifi size={14} /> : <WifiOff size={14} />}
+              <span className="text-[10px] font-bold uppercase tracking-tighter">
+                {isConnected ? '接続確立' : '未同期'}
+              </span>
+            </div>
 
-        <div className="flex items-center gap-8">
-          {timerSeconds !== null && (
-             <div className={`flex items-center gap-2 px-4 py-1.5 border rounded-full ${executionAborted ? 'bg-green-950/20 border-green-500/30 text-green-400' : 'bg-red-950/30 border-red-500/20 text-red-500'}`}>
-                <span className="text-[10px] font-black uppercase tracking-widest animate-pulse">
-                    {executionAborted ? 'システム安全' : '処刑まで残り'}
-                </span>
-                <span className="text-sm font-mono font-bold tabular-nums">
-                    {executionAborted ? '0分00秒' : `${Math.floor(timerSeconds / 60)}分${timerSeconds % 60}秒`}
-                </span>
-             </div>
-          )}
-          <div className="flex items-center gap-2 opacity-80">
-            <Clock size={16} />
-            <span className="text-sm font-light tabular-nums">
-              {displayDateStr} {displayClockStr}
-            </span>
+            {/* Emergency Retire Trigger Button (Displayed persistently unless retired orTerminated) */}
+            {puzzleState !== 'idle' && puzzleState !== 'retired' && (
+                <button
+                  onClick={() => {
+                      playSynthSound('open');
+                      setShowRetireConfirm(true);
+                  }}
+                  className="px-4 py-1 rounded-full bg-red-950/40 border border-red-500/30 text-red-500 text-[10px] font-bold uppercase tracking-widest hover:bg-red-950/70 transition-all flex items-center gap-1.5"
+                >
+                     <ShieldAlert size={12} />
+                     緊急リタイア
+                </button>
+            )}
           </div>
-        </div>
-      </header>
+
+          <div className="flex items-center gap-8">
+            {timerSeconds !== null && (
+               <div className={`flex items-center gap-2 px-4 py-1.5 border rounded-full ${executionAborted ? 'bg-green-950/20 border-green-500/30 text-green-400' : 'bg-red-950/30 border-red-500/20 text-red-500'}`}>
+                  <span className="text-[10px] font-black uppercase tracking-widest animate-pulse">
+                      {executionAborted ? 'システム安全' : '処刑まで残り'}
+                  </span>
+                  <span className="text-sm font-mono font-bold tabular-nums">
+                      {executionAborted ? '0分00秒' : `${Math.floor(timerSeconds / 60)}分${timerSeconds % 60}秒`}
+                  </span>
+               </div>
+            )}
+            <div className="flex items-center gap-2 opacity-80">
+              <Clock size={16} />
+              <span className="text-sm font-light tabular-nums">
+                {displayDateStr} {displayClockStr}
+              </span>
+            </div>
+          </div>
+        </header>
+      )}
 
       {/* 2. Main Area (Center) */}
-      <main className={`relative h-screen w-full flex items-center justify-center z-10 ${puzzleState === 'browsing_pdf_1' ? 'p-0 pt-0 pb-0' : 'p-20 pt-20 pb-28'}`}>
+      <main className="relative h-screen w-full flex items-center justify-center z-10 p-20 pt-20 pb-28">
 
         {/* State A: browsing_pdf_1 (Fullscreen absolute layout covering everything) */}
         {puzzleState === 'browsing_pdf_1' && (
-            <div className="fixed inset-0 z-50 bg-black flex flex-col">
+            <div className="fixed inset-0 pt-12 pb-24 z-50 bg-[#050508] flex flex-col">
                 {/* Embedded PDF 1 viewport occupying 100% of the screen */}
                 {!showTextFallback1 ? (
                     <iframe
-                       src="./documents/doc1.pdf"
+                       src="./documents/doc1.pdf#toolbar=0"
                        className="w-full h-full border-0 bg-black"
                        title="処刑装置起動手順_LOG_832.pdf"
                     />
@@ -1850,18 +2024,9 @@ const App: React.FC = () => {
                 {/* Floating click trigger to toggle text fallback */}
                 <button
                    onClick={() => setShowTextFallback1(!showTextFallback1)}
-                   className="absolute bottom-6 right-6 px-4 py-2.5 bg-zinc-900/90 hover:bg-zinc-800 border border-white/10 hover:border-white/20 rounded-xl text-white/80 hover:text-white transition-all text-xs font-bold font-sans flex items-center gap-2 z-[60] shadow-xl"
+                   className="absolute bottom-6 left-6 px-4 py-2.5 bg-zinc-900/90 hover:bg-zinc-800 border border-white/10 hover:border-white/20 rounded-xl text-white/80 hover:text-white transition-all text-xs font-bold font-sans flex items-center gap-2 z-[60] shadow-xl"
                 >
                      {showTextFallback1 ? "📄 PDF表示に戻す" : "📄 PDFが表示されない場合はこちら (テキスト表示)"}
-                </button>
-
-                {/* Hidden floating click trigger at the top right to open setup admin prompt */}
-                <button
-                   onClick={() => setShowPowerPrompt(true)}
-                   className="absolute top-4 right-4 p-3 bg-red-950/40 border border-red-500/20 hover:bg-red-950/80 rounded-full text-red-500 transition-all z-50 flex items-center justify-center"
-                   title="管理者メニュー起動"
-                >
-                     <Power size={18} />
                 </button>
             </div>
         )}
@@ -1896,7 +2061,7 @@ const App: React.FC = () => {
                             <div className="flex-1 rounded-2xl overflow-hidden bg-zinc-950 relative flex flex-col">
                                  {!showTextFallback2 ? (
                                      <iframe
-                                       src="./documents/doc2.pdf"
+                                       src="./documents/doc2.pdf#toolbar=0"
                                        className="w-full h-full border-0"
                                        title="管理者限定極秘データ_SEC_992.pdf"
                                      />
@@ -2498,19 +2663,6 @@ const App: React.FC = () => {
         )}
       </AnimatePresence>
 
-      {/* Global Offline Administrator Access Trigger (always available if offline at z-[10200]) */}
-      {(isForcedOfflineMode || (!isConnected || !isPaired)) && !showSetup && !showPowerPrompt && !showExitModal && (
-          <button
-             onClick={() => {
-                 playSynthSound('open');
-                 setShowPowerPrompt(true);
-             }}
-             className="fixed bottom-6 right-6 p-4 bg-red-950/80 border border-red-500/30 hover:bg-red-900 rounded-full text-red-500 transition-all z-[10200] flex items-center justify-center shadow-[0_0_20px_rgba(239,68,68,0.3)] hover:scale-110"
-             title="オフライン管理者ツール起動"
-          >
-               <Power size={22} />
-          </button>
-      )}
 
       {/* Shutdown Exit lock modal */}
       <AnimatePresence>

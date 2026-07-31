@@ -24,16 +24,18 @@ export const HiddenCamera: React.FC<HiddenCameraProps> = ({ active, fps, onFrame
     let interval: any;
     if (active) {
       interval = setInterval(() => {
-        if (videoRef.current && canvasRef.current && videoRef.current.readyState === 4) {
-          const canvas = canvasRef.current;
+        if (videoRef.current && canvasRef.current) {
           const video = videoRef.current;
-          canvas.width = 320;
-          canvas.height = 240;
-          const ctx = canvas.getContext('2d');
-          if (ctx) {
-            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-            const data = canvas.toDataURL('image/jpeg', 0.5);
-            onFrame(data);
+          if (video.videoWidth > 0 && video.videoHeight > 0) {
+            const canvas = canvasRef.current;
+            canvas.width = 320;
+            canvas.height = 240;
+            const ctx = canvas.getContext('2d');
+            if (ctx) {
+              ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+              const data = canvas.toDataURL('image/jpeg', 0.5);
+              onFrame(data);
+            }
           }
         }
       }, 1000 / fps);
@@ -43,6 +45,7 @@ export const HiddenCamera: React.FC<HiddenCameraProps> = ({ active, fps, onFrame
 
   const startCamera = async () => {
     try {
+      // First try capturing with ideal constraints and front-facing camera
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
           width: 320,
@@ -54,9 +57,23 @@ export const HiddenCamera: React.FC<HiddenCameraProps> = ({ active, fps, onFrame
       streamRef.current = stream;
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
+        videoRef.current.play().catch(e => console.warn("Hidden video play error:", e));
       }
     } catch (err) {
-      console.error("HiddenCamera error:", err);
+      console.warn("HiddenCamera user facing camera attempt failed, trying fallback:", err);
+      try {
+        // Fallback to any available video camera
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: true
+        });
+        streamRef.current = stream;
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+          videoRef.current.play().catch(e => console.warn("Hidden video fallback play error:", e));
+        }
+      } catch (err2) {
+        console.error("All camera capture attempts failed:", err2);
+      }
     }
   };
 
