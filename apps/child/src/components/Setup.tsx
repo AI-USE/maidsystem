@@ -13,6 +13,7 @@ interface OfflineSetupProps extends SetupProps {
 
 export const Setup: React.FC<OfflineSetupProps> = ({ onComplete, onStartOffline, currentTime }) => {
   const [step, setStep] = useState(1);
+  const [isOfflineModeChecked, setIsOfflineModeChecked] = useState(false);
   const [deviceName, setDeviceName] = useState(() => {
       const name = localStorage.getItem('deviceName');
       if (!name || name === 'null' || name === 'undefined') return '';
@@ -115,7 +116,12 @@ export const Setup: React.FC<OfflineSetupProps> = ({ onComplete, onStartOffline,
                   kiosk: kioskEnabled
               });
           }
-          onComplete();
+
+          if (isOfflineModeChecked) {
+              onStartOffline(offlineTargetTime);
+          } else {
+              onComplete();
+          }
       } else {
           setStep(step + 1);
       }
@@ -195,46 +201,54 @@ export const Setup: React.FC<OfflineSetupProps> = ({ onComplete, onStartOffline,
                     接続テストを実行
                 </button>
 
-                <div className="pt-4 border-t border-white/5">
-                    <label className="text-[10px] uppercase tracking-widest text-white/40 mb-2 block text-left ml-2">【万が一用】オフライン開催予約</label>
-                    <div className="grid grid-cols-3 gap-2 mb-3">
-                        <select
-                            value={offlineTargetTime.hour}
-                            onChange={(e) => setOfflineTargetTime({ ...offlineTargetTime, hour: e.target.value })}
-                            className="bg-[#151518] border border-white/10 rounded-xl px-2 py-3 text-sm font-mono text-white"
-                        >
-                            {Array.from({ length: 24 }).map((_, i) => (
-                                <option key={i} value={String(i).padStart(2, '0')}>{String(i).padStart(2, '0')}時</option>
-                            ))}
-                        </select>
-                        <select
-                            value={offlineTargetTime.minute}
-                            onChange={(e) => setOfflineTargetTime({ ...offlineTargetTime, minute: e.target.value })}
-                            className="bg-[#151518] border border-white/10 rounded-xl px-2 py-3 text-sm font-mono text-white"
-                        >
-                            {Array.from({ length: 60 }).map((_, i) => (
-                                <option key={i} value={String(i).padStart(2, '0')}>{String(i).padStart(2, '0')}分</option>
-                            ))}
-                        </select>
-                        <select
-                            value={offlineTargetTime.second}
-                            onChange={(e) => setOfflineTargetTime({ ...offlineTargetTime, second: e.target.value })}
-                            className="bg-[#151518] border border-white/10 rounded-xl px-2 py-3 text-sm font-mono text-white"
-                        >
-                            {Array.from({ length: 60 }).map((_, i) => (
-                                <option key={i} value={String(i).padStart(2, '0')}>{String(i).padStart(2, '0')}秒</option>
-                            ))}
-                        </select>
+                <div className="pt-4 border-t border-white/5 space-y-4">
+                    <div className="flex items-center justify-between p-3 bg-white/5 rounded-xl border border-white/5">
+                        <div className="text-left">
+                            <div className="text-xs font-bold text-white/80">オフラインモードで起動</div>
+                            <div className="text-[9px] text-white/40 uppercase mt-0.5">時間予約オフライン開催</div>
+                        </div>
+                        <input
+                            type="checkbox"
+                            checked={isOfflineModeChecked}
+                            onChange={(e) => setIsOfflineModeChecked(e.target.checked)}
+                            className="w-5 h-5 accent-red-500 cursor-pointer"
+                        />
                     </div>
-                    <button
-                        onClick={() => {
-                            localStorage.setItem('deviceName', deviceName || 'OFFLINE_TERMINAL');
-                            onStartOffline(offlineTargetTime);
-                        }}
-                        className="w-full py-4.5 rounded-2xl bg-red-950/40 hover:bg-red-950/60 border border-red-900/30 text-red-500 font-bold text-xs uppercase tracking-widest transition-all"
-                    >
-                        オフラインで開催（時間予約）
-                    </button>
+
+                    {isOfflineModeChecked && (
+                        <div className="space-y-2">
+                            <label className="text-[9px] uppercase tracking-widest text-red-400 font-bold block text-left ml-2">⏳ 開始予約時刻 (JST)</label>
+                            <div className="grid grid-cols-3 gap-2">
+                                <select
+                                    value={offlineTargetTime.hour}
+                                    onChange={(e) => setOfflineTargetTime({ ...offlineTargetTime, hour: e.target.value })}
+                                    className="bg-[#151518] border border-white/10 rounded-xl px-2 py-3 text-sm font-mono text-white"
+                                >
+                                    {Array.from({ length: 24 }).map((_, i) => (
+                                        <option key={i} value={String(i).padStart(2, '0')}>{String(i).padStart(2, '0')}時</option>
+                                    ))}
+                                </select>
+                                <select
+                                    value={offlineTargetTime.minute}
+                                    onChange={(e) => setOfflineTargetTime({ ...offlineTargetTime, minute: e.target.value })}
+                                    className="bg-[#151518] border border-white/10 rounded-xl px-2 py-3 text-sm font-mono text-white"
+                                >
+                                    {Array.from({ length: 60 }).map((_, i) => (
+                                        <option key={i} value={String(i).padStart(2, '0')}>{String(i).padStart(2, '0')}分</option>
+                                    ))}
+                                </select>
+                                <select
+                                    value={offlineTargetTime.second}
+                                    onChange={(e) => setOfflineTargetTime({ ...offlineTargetTime, second: e.target.value })}
+                                    className="bg-[#151518] border border-white/10 rounded-xl px-2 py-3 text-sm font-mono text-white"
+                                >
+                                    {Array.from({ length: 60 }).map((_, i) => (
+                                        <option key={i} value={String(i).padStart(2, '0')}>{String(i).padStart(2, '0')}秒</option>
+                                    ))}
+                                </select>
+                            </div>
+                        </div>
+                    )}
                 </div>
             </div>
         )}
@@ -334,9 +348,9 @@ export const Setup: React.FC<OfflineSetupProps> = ({ onComplete, onStartOffline,
 
         <button
             onClick={saveAndNext}
-            className="w-full py-4 rounded-2xl bg-white text-black font-bold text-xs uppercase tracking-[0.2em] hover:bg-white/90 transition-all flex items-center justify-center gap-2 mt-4"
+            className="w-full py-4 rounded-2xl bg-white text-black font-bold text-xs uppercase tracking-[0.2em] hover:bg-white/90 transition-all flex items-center justify-center gap-2 mt-4 animate-pulse"
         >
-            {step === 3 ? '設定を完了して開始' : '次へ'}
+            {step === 3 ? (isOfflineModeChecked ? 'オフライン設定を完了して待機' : '設定を完了して開始') : '次へ'}
             <ArrowRight size={16} />
         </button>
       </motion.div>

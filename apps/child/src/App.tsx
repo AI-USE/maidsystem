@@ -224,6 +224,21 @@ const App: React.FC = () => {
   const cam1VideoRef = useRef<HTMLVideoElement>(null);
   const cam2VideoRef = useRef<HTMLVideoElement>(null);
   const activeVideoRef = useRef<HTMLVideoElement>(null);
+  const childEndTimestampRef = useRef<number | null>(null);
+  const lastAnnouncedSecRef = useRef<number | null>(null);
+  const offlineRetireIntervalRef = useRef<any>(null);
+  const deliveringTtsIntervalRef = useRef<any>(null);
+
+  // Synchronize absolute child JST timestamp countdown on pause/resume transitions
+  useEffect(() => {
+    if (isPaused) {
+       // paused
+    } else {
+       if (timerSeconds !== null && timerSeconds > 0) {
+           childEndTimestampRef.current = Date.now() + timerSeconds * 1000;
+       }
+    }
+  }, [isPaused]);
 
   useEffect(() => {
     if (videoPlaying && activeVideoRef.current) {
@@ -562,59 +577,168 @@ const App: React.FC = () => {
     return () => clearInterval(interval);
   }, [videoPlaying, useMockTimerFallback, getVideoSrc, handleVideoFinished]);
 
-  // Execution Countdown Timer
+  // Execution Countdown Timer (Drift-immune absolute JST timestamp-based countdown tracker)
   // Starts ticking only after preparation is complete (i.e. 'locked', 'browsing_pdf_1', or 'admin_desktop')
   useEffect(() => {
     let interval: any;
-    if (timerSeconds !== null && timerSeconds > 0 && puzzleState !== 'idle' && !isPaused && !videoPlaying) {
+    if (timerSeconds !== null && timerSeconds > 0 && puzzleState !== 'idle' && !isPaused) {
       interval = setInterval(() => {
-        setTimerSeconds(prev => {
-          if (prev && prev > 1) {
-             const next = prev - 1;
+        if (childEndTimestampRef.current !== null) {
+          const now = Date.now();
+          const next = Math.max(0, Math.ceil((childEndTimestampRef.current - now) / 1000));
 
-             // 1. Speek announcement at exactly 30 seconds remaining
-             if (next === 30) {
-                 if ('speechSynthesis' in window) {
-                     window.speechSynthesis.cancel();
-                     const utterance = new SpeechSynthesisUtterance("間もなく処刑コードが入力できます。");
-                     utterance.lang = 'ja-JP';
-                     utterance.rate = 1.0;
-                     utterance.volume = 1.0;
-                     window.speechSynthesis.speak(utterance);
-                 }
-             }
-
-             // 2. Play rhythmic beeps and countdown speech under 10 seconds remaining
-             if (next <= 10) {
-                 const pitch = next === 1 ? 1200 : 880;
-                 playRhythmTick(pitch, 0.15);
-
-                 if ('speechSynthesis' in window) {
-                     window.speechSynthesis.cancel();
-                     const utterance = new SpeechSynthesisUtterance(String(next));
-                     utterance.lang = 'ja-JP';
-                     utterance.rate = 1.3;
-                     utterance.volume = 0.8;
-                     window.speechSynthesis.speak(utterance);
-                 }
-             }
-
-             return next;
-          }
-          if (prev === 1) {
+          if (next === 0 && timerSeconds > 0) {
              // 7 minutes expiration: trigger 5-second blackout first, and 3 seconds after blackout starts, play results video.
+             setTimerSeconds(0);
              setTimeout(() => {
                 const outcome = gameResult !== 'none' ? gameResult : 'failed';
                 startVideoPlayback(outcome);
              }, 3000);
-             return 0;
+          } else if (next > 0) {
+             setTimerSeconds(next);
+
+             if (next !== lastAnnouncedSecRef.current) {
+                 lastAnnouncedSecRef.current = next;
+
+                 // 1. Speak announcement at exactly 30 seconds remaining
+                 if (next === 30) {
+                     if ('speechSynthesis' in window) {
+                         window.speechSynthesis.cancel();
+                         const utterance = new SpeechSynthesisUtterance("間もなく処刑コードが入力できます。");
+                         utterance.lang = 'ja-JP';
+                         utterance.rate = 1.0;
+                         utterance.volume = 1.0;
+                         window.speechSynthesis.speak(utterance);
+                     }
+                 }
+
+                 // 2. Play rhythmic beeps and countdown speech under 10 seconds remaining
+                 if (next <= 10) {
+                     const pitch = next === 1 ? 1200 : 880;
+                     playRhythmTick(pitch, 0.15);
+
+                     if ('speechSynthesis' in window) {
+                         window.speechSynthesis.cancel();
+                         const utterance = new SpeechSynthesisUtterance(String(next));
+                         utterance.lang = 'ja-JP';
+                         utterance.rate = 1.3;
+                         utterance.volume = 0.8;
+                         window.speechSynthesis.speak(utterance);
+                     }
+                 }
+             }
           }
-          return 0;
-        });
-      }, 1000);
+        }
+      }, 250);
     }
     return () => clearInterval(interval);
-  }, [timerSeconds, puzzleState, isPaused, videoPlaying, gameResult, startVideoPlayback]);
+  }, [timerSeconds, puzzleState, isPaused, gameResult, startVideoPlayback]);
+
+  // Periodically request phase synchronization from master to prevent drift
+  useEffect(() => {
+    let interval: any;
+    const isOffline = isForcedOfflineMode || (!isConnected || !isPaired);
+    if (!isOffline) {
+      interval = setInterval(() => {
+         emit('CONNECTION_MSG', { text: `CHECK_PHASE_REQUEST: ${puzzleState}:${timerSeconds}` });
+      }, 3000);
+    }
+    return () => clearInterval(interval);
+  }, [puzzleState, timerSeconds, isForcedOfflineMode, isConnected, isPaired]);
+
+  // Offline emergency retire loud alarm loop
+  useEffect(() => {
+    const isOffline = isForcedOfflineMode || (!isConnected || !isPaired);
+    if (puzzleState === 'retired' && isOffline) {
+       // Suppress regular BGM
+       if (bgmAudioRef.current) bgmAudioRef.current.pause();
+
+       const playVocalAlarm = () => {
+          if ('speechSynthesis' in window) {
+              window.speechSynthesis.cancel();
+              const utterance = new SpeechSynthesisUtterance("警告、緊急リタイアが実行されました。スタッフを呼び出してください。");
+              utterance.lang = 'ja-JP';
+              utterance.rate = 1.0;
+              utterance.volume = 1.0; // MAX volume
+              window.speechSynthesis.speak(utterance);
+          }
+       };
+
+       playVocalAlarm();
+       offlineRetireIntervalRef.current = setInterval(playVocalAlarm, 5000);
+    } else {
+       if (offlineRetireIntervalRef.current) {
+           clearInterval(offlineRetireIntervalRef.current);
+           offlineRetireIntervalRef.current = null;
+           if ('speechSynthesis' in window) {
+               window.speechSynthesis.cancel();
+           }
+       }
+    }
+    return () => {
+       if (offlineRetireIntervalRef.current) {
+           clearInterval(offlineRetireIntervalRef.current);
+       }
+    };
+  }, [puzzleState, isForcedOfflineMode, isConnected, isPaired]);
+
+  // Unified Maid delivering loop (loops "ただいま配達中です。" or "ただいま配達中です。[端末名]、[物品名]、運んでください。" at max volume for 8s if offline)
+  useEffect(() => {
+    if (maidDeliveryState === 'delivering') {
+       const isOffline = isForcedOfflineMode || (!isConnected || !isPaired);
+
+       const matched = maidItemsData.find(entry => entry.roomCode === maidRoomInput && entry.itemCode === maidItemInput);
+       const itemName = matched ? matched.name : '物品';
+
+       const speakDelivering = () => {
+          if ('speechSynthesis' in window) {
+              window.speechSynthesis.cancel();
+
+              const text = isOffline
+                ? `ただいま配達中です。${localStorage.getItem('deviceName') || '端末'}、${itemName}、運んでください。`
+                : `ただいま配達中です。`;
+
+              const utterance = new SpeechSynthesisUtterance(text);
+              utterance.lang = 'ja-JP';
+              utterance.rate = 1.0;
+              utterance.volume = 1.0; // MAX volume
+              window.speechSynthesis.speak(utterance);
+          }
+       };
+
+       speakDelivering();
+       deliveringTtsIntervalRef.current = setInterval(speakDelivering, 3000);
+
+       if (isOffline) {
+          // Reset to idle after exactly 8 seconds if offline
+          setTimeout(() => {
+              if (deliveringTtsIntervalRef.current) {
+                  clearInterval(deliveringTtsIntervalRef.current);
+                  deliveringTtsIntervalRef.current = null;
+              }
+              if ('speechSynthesis' in window) {
+                  window.speechSynthesis.cancel();
+              }
+              setMaidDeliveryState('idle');
+              setMaidRoomInput('');
+              setMaidItemInput('');
+          }, 8000);
+       }
+    } else {
+       if (deliveringTtsIntervalRef.current) {
+           clearInterval(deliveringTtsIntervalRef.current);
+           deliveringTtsIntervalRef.current = null;
+           if ('speechSynthesis' in window) {
+               window.speechSynthesis.cancel();
+           }
+       }
+    }
+    return () => {
+       if (deliveringTtsIntervalRef.current) {
+           clearInterval(deliveringTtsIntervalRef.current);
+       }
+    };
+  }, [maidDeliveryState, isForcedOfflineMode, isConnected, isPaired, maidRoomInput, maidItemInput]);
 
   useEffect(() => {
     if ((window as any).electron) {
@@ -887,27 +1011,30 @@ const App: React.FC = () => {
       setPowerInput('');
       setPowerError(false);
 
-      // Start Admin Boot Sequence
-      setPuzzleState('boot_loading');
-      setTimeout(() => {
-         setPuzzleState('admin_desktop');
-         emit('CONNECTION_MSG', { text: 'GOV-CORE OS: Admin mode booted successfully.' });
-      }, 5000); // 5 seconds of boot loader
+      const isOffline = isForcedOfflineMode || (!isConnected || !isPaired);
+      if (isOffline) {
+          // If offline mode, reset/restart the game back to setup wizard!
+          resetPuzzleStateAndInputs();
+          setPuzzleState('idle');
+          setOfflineStandbyActive(false);
+          setOfflineScheduledTime(null);
+          setIsForcedOfflineMode(false);
+          setShowSetup(true);
+      } else {
+          // Start Admin Boot Sequence (Reduced to 3 seconds as requested!)
+          setPuzzleState('boot_loading');
+          setTimeout(() => {
+             setPuzzleState('admin_desktop');
+             emit('CONNECTION_MSG', { text: 'GOV-CORE OS: Admin mode booted successfully.' });
+          }, 3000);
+      }
     } else {
       setPowerError(true);
     }
   };
 
-  const [offlineMaidIntervalId, setOfflineMaidIntervalId] = useState<any>(null);
-
   const handleMaidDeliver = () => {
      if (maidTimer > 0) return;
-
-     if (deliveredItemCodes.includes(maidItemInput)) {
-         setMaidDeliveryError("すでに配達済みです");
-         setMaidDeliveryState('error');
-         return;
-     }
 
      setMaidDeliveryState('testing');
 
@@ -920,47 +1047,7 @@ const App: React.FC = () => {
              // Check if we are offline (forced or connection lost)
              const isOffline = isForcedOfflineMode || (!isConnected || !isPaired);
 
-             if (isOffline) {
-                 // Suppress background ambient hum BGM
-                 if (bgmAudioRef.current) bgmAudioRef.current.pause();
-
-                 // Loop announcement with max volume for 10 seconds, then set to delivered/cleared
-                 const text = `${localStorage.getItem('deviceName') || '端末'}、${matched.name}、運んでください。`;
-                 const speakAnnouncementOffline = () => {
-                     if ('speechSynthesis' in window) {
-                         window.speechSynthesis.cancel();
-                         const utterance = new SpeechSynthesisUtterance(text);
-                         utterance.lang = 'ja-JP';
-                         utterance.rate = 1.0;
-                         utterance.volume = 1.0; // max volume
-                         window.speechSynthesis.speak(utterance);
-                     }
-                 };
-
-                 speakAnnouncementOffline();
-                 const intervalId = setInterval(speakAnnouncementOffline, 2500);
-                 setOfflineMaidIntervalId(intervalId);
-
-                 setTimeout(() => {
-                     clearInterval(intervalId);
-                     setOfflineMaidIntervalId(null);
-                     if ('speechSynthesis' in window) {
-                         window.speechSynthesis.cancel();
-                     }
-
-                     // Resume background ambient hum BGM if standard game is running
-                     if (puzzleState !== 'retired' && !videoPlaying && !isPaused && timerSeconds !== 0) {
-                         if (bgmAudioRef.current) bgmAudioRef.current.play().catch(e => console.log("BGM play catch:", e));
-                     }
-
-                     // Put into deliveredItemCodes list so it prevents re-request
-                     setDeliveredItems(prev => [...prev, matched.itemCode]);
-                     setMaidDeliveryState('idle');
-                     setMaidRoomInput('');
-                     setMaidItemInput('');
-                 }, 10000);
-
-             } else {
+             if (!isOffline) {
                  emit('CONNECTION_MSG', {
                      text: `MAID_DELIVERY_REQUEST: Room: "${maidRoomInput}", Item: "${maidItemInput}", ItemName: "${matched.name}"`
                  });
@@ -1971,7 +2058,7 @@ const App: React.FC = () => {
 
                                   {/* Mock Maid Control System App */}
                                   {openAppId === 'maid' && (
-                                      <div className="max-w-md mx-auto space-y-6 py-6 font-mono text-center">
+                                      <div className={`max-w-md mx-auto space-y-6 py-6 font-mono text-center p-6 border rounded-[24px] transition-all ${maidDeliveryState === 'delivering' ? 'rainbow-pulse-border bg-black/60' : 'border-transparent bg-transparent'}`}>
                                            <div className="w-16 h-16 bg-red-950/40 rounded-[20px] flex items-center justify-center mx-auto border border-red-500/20 animate-pulse">
                                                <Cpu className="text-red-500" size={32} />
                                            </div>
@@ -2410,6 +2497,20 @@ const App: React.FC = () => {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Global Offline Administrator Access Trigger (always available if offline at z-[10200]) */}
+      {(isForcedOfflineMode || (!isConnected || !isPaired)) && !showSetup && !showPowerPrompt && !showExitModal && (
+          <button
+             onClick={() => {
+                 playSynthSound('open');
+                 setShowPowerPrompt(true);
+             }}
+             className="fixed bottom-6 right-6 p-4 bg-red-950/80 border border-red-500/30 hover:bg-red-900 rounded-full text-red-500 transition-all z-[10200] flex items-center justify-center shadow-[0_0_20px_rgba(239,68,68,0.3)] hover:scale-110"
+             title="オフライン管理者ツール起動"
+          >
+               <Power size={22} />
+          </button>
+      )}
 
       {/* Shutdown Exit lock modal */}
       <AnimatePresence>
