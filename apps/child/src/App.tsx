@@ -338,6 +338,7 @@ const App: React.FC = () => {
   const offlineRetireIntervalRef = useRef<any>(null);
   const deliveringTtsIntervalRef = useRef<any>(null);
 
+
   // Synchronize absolute child JST timestamp countdown on pause/resume transitions
   useEffect(() => {
     if (isPaused) {
@@ -358,6 +359,7 @@ const App: React.FC = () => {
   }, [videoPlaying, videoType]);
 
   // Maid controls state
+  const [isEventUnlocked, setIsEventUnlocked] = useState(false);
   const [maidRoomInput, setMaidRoomInput] = useState('');
   const [maidItemInput, setMaidItemInput] = useState('');
   const [maidDeliveryState, setMaidDeliveryState] = useState<'idle' | 'testing' | 'delivering' | 'error'>('idle');
@@ -407,6 +409,20 @@ const App: React.FC = () => {
   const [offlineStandbyActive, setOfflineStandbyActive] = useState(false);
 
   const { isConnected, isPaired, lastCommand, emit } = useRemoteControl(isForcedOfflineMode ? null : masterUrl);
+
+  // State checking helper to determine online/offline dynamically
+  const checkActiveOffline = useCallback(() => {
+     return isForcedOfflineMode || (!isConnected || !isPaired);
+  }, [isForcedOfflineMode, isConnected, isPaired]);
+
+  const setTimerSecondsAndTimestamp = useCallback((seconds: number | null) => {
+     setTimerSeconds(seconds);
+     if (seconds !== null) {
+         childEndTimestampRef.current = Date.now() + seconds * 1000;
+     } else {
+         childEndTimestampRef.current = null;
+     }
+  }, []);
   const audioRefs = useRef<{ [key: string]: HTMLAudioElement }>({});
 
   const getVideoSrc = useCallback(() => {
@@ -448,7 +464,7 @@ const App: React.FC = () => {
       }
     }
 
-    const isOffline = isForcedOfflineMode || (!isConnected || !isPaired);
+    const isOffline = checkActiveOffline();
     const isResultsVideo = videoType === 'correct' || videoType === 'close' || videoType === 'failed';
 
     if (isResultsVideo && !isOffline) {
@@ -465,7 +481,7 @@ const App: React.FC = () => {
         setVideoType('commentary');
       }, 1000);
     }
-  }, [videoType, gameResult, isForcedOfflineMode, isConnected, isPaired]);
+  }, [videoType, gameResult, checkActiveOffline]);
 
   const startVideoPlayback = useCallback((type: 'start' | 'admin' | 'correct' | 'close' | 'failed' | 'commentary') => {
     playSynthSound('open');
@@ -476,6 +492,7 @@ const App: React.FC = () => {
   }, []);
 
   const resetPuzzleStateAndInputs = useCallback(() => {
+    setIsEventUnlocked(false);
     setDeliveredItems([]);
     setMaidRoomInput('');
     setMaidItemInput('');
@@ -708,73 +725,114 @@ const App: React.FC = () => {
   useEffect(() => {
     let interval: any;
     if (timerSeconds !== null && timerSeconds > 0 && puzzleState !== 'idle' && !isPaused) {
+      const isOffline = checkActiveOffline();
       interval = setInterval(() => {
-        if (childEndTimestampRef.current !== null) {
-          const now = Date.now();
-          const next = Math.max(0, Math.ceil((childEndTimestampRef.current - now) / 1000));
+        if (isOffline) {
+          setTimerSeconds(prev => {
+             if (prev === null) return null;
+             const next = prev - 1;
+             if (next <= 0) {
+                 clearInterval(interval);
+                 setTimeout(() => {
+                    const outcome = gameResult !== 'none' ? gameResult : 'failed';
+                    startVideoPlayback(outcome);
+                 }, 3000);
+                 return 0;
+             }
 
-          if (next === 0 && timerSeconds > 0) {
-             // 7 minutes expiration: trigger 5-second blackout first, and 3 seconds after blackout starts, play results video.
-             setTimerSeconds(0);
-             setTimeout(() => {
-                const outcome = gameResult !== 'none' ? gameResult : 'failed';
-                startVideoPlayback(outcome);
-             }, 3000);
-          } else if (next > 0) {
-             setTimerSeconds(next);
-
-             if (next !== lastAnnouncedSecRef.current) {
-                 lastAnnouncedSecRef.current = next;
-
-                 // 1. Speak announcement at exactly 30 seconds remaining
-                 if (next === 30) {
-                     if ('speechSynthesis' in window) {
-                         window.speechSynthesis.cancel();
-                         const utterance = new SpeechSynthesisUtterance("間もなく処刑コードが入力できます。");
-                         utterance.lang = 'ja-JP';
-                         utterance.rate = 1.0;
-                         utterance.volume = 1.0;
-                         window.speechSynthesis.speak(utterance);
-                     }
+             // Announcements
+             if (next === 30) {
+                 if ('speechSynthesis' in window) {
+                     window.speechSynthesis.cancel();
+                     const utterance = new SpeechSynthesisUtterance("間もなく処刑コードが入力できます。");
+                     utterance.lang = 'ja-JP';
+                     utterance.rate = 1.0;
+                     utterance.volume = 1.0;
+                     window.speechSynthesis.speak(utterance);
                  }
+             } else if (next <= 10) {
+                 const pitch = next === 1 ? 1200 : 880;
+                 playRhythmTick(pitch, 0.15);
 
-                 // 2. Play rhythmic beeps and countdown speech under 10 seconds remaining
-                 if (next <= 10) {
-                     const pitch = next === 1 ? 1200 : 880;
-                     playRhythmTick(pitch, 0.15);
-
-                     if ('speechSynthesis' in window) {
-                         window.speechSynthesis.cancel();
-                         const utterance = new SpeechSynthesisUtterance(String(next));
-                         utterance.lang = 'ja-JP';
-                         utterance.rate = 1.3;
-                         utterance.volume = 0.8;
-                         window.speechSynthesis.speak(utterance);
-                     }
+                 if ('speechSynthesis' in window) {
+                     window.speechSynthesis.cancel();
+                     const utterance = new SpeechSynthesisUtterance(String(next));
+                     utterance.lang = 'ja-JP';
+                     utterance.rate = 1.3;
+                     utterance.volume = 0.8;
+                     window.speechSynthesis.speak(utterance);
                  }
              }
+             return next;
+          });
+        } else {
+          if (childEndTimestampRef.current !== null) {
+            const now = Date.now();
+            const next = Math.max(0, Math.ceil((childEndTimestampRef.current - now) / 1000));
+
+            if (next === 0 && timerSeconds > 0) {
+               // 7 minutes expiration: trigger 5-second blackout first, and 3 seconds after blackout starts, play results video.
+               setTimerSeconds(0);
+               setTimeout(() => {
+                  const outcome = gameResult !== 'none' ? gameResult : 'failed';
+                  startVideoPlayback(outcome);
+               }, 3000);
+            } else if (next > 0) {
+               setTimerSeconds(next);
+
+               if (next !== lastAnnouncedSecRef.current) {
+                   lastAnnouncedSecRef.current = next;
+
+                   // 1. Speak announcement at exactly 30 seconds remaining
+                   if (next === 30) {
+                       if ('speechSynthesis' in window) {
+                           window.speechSynthesis.cancel();
+                           const utterance = new SpeechSynthesisUtterance("間もなく処刑コードが入力できます。");
+                           utterance.lang = 'ja-JP';
+                           utterance.rate = 1.0;
+                           utterance.volume = 1.0;
+                           window.speechSynthesis.speak(utterance);
+                       }
+                   }
+
+                   // 2. Play rhythmic beeps and countdown speech under 10 seconds remaining
+                   if (next <= 10) {
+                       const pitch = next === 1 ? 1200 : 880;
+                       playRhythmTick(pitch, 0.15);
+
+                       if ('speechSynthesis' in window) {
+                           window.speechSynthesis.cancel();
+                           const utterance = new SpeechSynthesisUtterance(String(next));
+                           utterance.lang = 'ja-JP';
+                           utterance.rate = 1.3;
+                           utterance.volume = 0.8;
+                           window.speechSynthesis.speak(utterance);
+                       }
+                   }
+               }
+            }
           }
         }
-      }, 250);
+      }, isOffline ? 1000 : 250);
     }
     return () => clearInterval(interval);
-  }, [timerSeconds, puzzleState, isPaused, gameResult, startVideoPlayback]);
+  }, [timerSeconds, puzzleState, isPaused, gameResult, startVideoPlayback, checkActiveOffline]);
 
   // Periodically request phase synchronization from master to prevent drift
   useEffect(() => {
     let interval: any;
-    const isOffline = isForcedOfflineMode || (!isConnected || !isPaired);
+    const isOffline = checkActiveOffline();
     if (!isOffline) {
       interval = setInterval(() => {
          emit('CONNECTION_MSG', { text: `CHECK_PHASE_REQUEST: ${puzzleState}:${timerSeconds}` });
       }, 3000);
     }
     return () => clearInterval(interval);
-  }, [puzzleState, timerSeconds, isForcedOfflineMode, isConnected, isPaired]);
+  }, [puzzleState, timerSeconds, checkActiveOffline]);
 
   // Offline emergency retire loud alarm loop
   useEffect(() => {
-    const isOffline = isForcedOfflineMode || (!isConnected || !isPaired);
+    const isOffline = checkActiveOffline();
     if (puzzleState === 'retired' && isOffline) {
        // Suppress regular BGM
        if (bgmAudioRef.current) bgmAudioRef.current.pause();
@@ -807,12 +865,12 @@ const App: React.FC = () => {
            clearInterval(offlineRetireIntervalRef.current);
        }
     };
-  }, [puzzleState, isForcedOfflineMode, isConnected, isPaired]);
+  }, [puzzleState, checkActiveOffline]);
 
   // Unified Maid delivering loop (loops "ただいま配達中です。" or "ただいま配達中です。[端末名]、[物品名]、運んでください。" at max volume for 8s if offline)
   useEffect(() => {
     if (maidDeliveryState === 'delivering') {
-       const isOffline = isForcedOfflineMode || (!isConnected || !isPaired);
+       const isOffline = checkActiveOffline();
 
        const matched = maidItemsData.find(entry => entry.roomCode === maidRoomInput && entry.itemCode === maidItemInput);
        const itemName = matched ? matched.name : '物品';
@@ -866,7 +924,7 @@ const App: React.FC = () => {
            clearInterval(deliveringTtsIntervalRef.current);
        }
     };
-  }, [maidDeliveryState, isForcedOfflineMode, isConnected, isPaired, maidRoomInput, maidItemInput]);
+  }, [maidDeliveryState, checkActiveOffline, maidRoomInput, maidItemInput]);
 
   useEffect(() => {
     if ((window as any).electron) {
@@ -978,10 +1036,10 @@ const App: React.FC = () => {
         setTimeout(() => setNotification(null), 5000);
         break;
       case 'START_TIMER':
-        setTimerSeconds(cmd.payload.seconds);
+        setTimerSecondsAndTimestamp(cmd.payload.seconds);
         break;
       case 'STOP_TIMER':
-        setTimerSeconds(null);
+        setTimerSecondsAndTimestamp(null);
         break;
       case 'INJECT_LOG':
         setRemoteLogs(prev => [...prev, cmd.payload.message]);
@@ -996,7 +1054,7 @@ const App: React.FC = () => {
         resetPuzzleStateAndInputs();
         setPuzzleState('idle');
         setTimeOverride(null);
-        setTimerSeconds(null);
+        setTimerSecondsAndTimestamp(null);
         setIsPaused(false);
         break;
       }
@@ -1008,7 +1066,7 @@ const App: React.FC = () => {
         setTimeOverride(targetTime);
 
         // Set execution countdown to exactly 7 minutes (420 seconds)
-        setTimerSeconds(420);
+        setTimerSecondsAndTimestamp(420);
 
         // Transition to idle, then start unskippable video
         setPuzzleState('idle');
@@ -1021,7 +1079,7 @@ const App: React.FC = () => {
         const { puzzleState: masterState, timerSeconds: masterSecs, isPaused: masterPaused } = cmd.payload;
         if (masterSecs !== undefined && timerSeconds !== null) {
           if (Math.abs(timerSeconds - masterSecs) > 2) {
-            setTimerSeconds(masterSecs);
+            setTimerSecondsAndTimestamp(masterSecs);
           }
         }
         if (masterPaused !== undefined && isPaused !== masterPaused) {
@@ -1050,7 +1108,7 @@ const App: React.FC = () => {
         resetPuzzleStateAndInputs();
         setPuzzleState('idle');
         setTimeOverride(null);
-        setTimerSeconds(null);
+        setTimerSecondsAndTimestamp(null);
         setIsPaused(false);
         break;
       case 'PUZZLE_RESTART': {
@@ -1058,7 +1116,7 @@ const App: React.FC = () => {
         const targetTime = new Date();
         targetTime.setHours(23, 53, 40, 0);
         setTimeOverride(targetTime);
-        setTimerSeconds(420);
+        setTimerSecondsAndTimestamp(420);
 
         // Transition to idle, then start unskippable video
         setPuzzleState('idle');
@@ -1100,7 +1158,11 @@ const App: React.FC = () => {
         break;
       }
       case 'PUZZLE_CANCEL_RETIRE': {
-        setPuzzleState('idle');
+        if (timerSeconds !== null && timerSeconds > 0) {
+            setPuzzleState(isEventUnlocked ? 'browsing_pdf_1' : 'locked');
+        } else {
+            setPuzzleState('idle');
+        }
         break;
       }
     }
@@ -1123,6 +1185,7 @@ const App: React.FC = () => {
     if (puzzleInput === eventPass) {
       playSynthSound('success');
       setPuzzleState('browsing_pdf_1');
+      setIsEventUnlocked(true);
       setPuzzleInput('');
       setPuzzleError(false);
       emit('CONNECTION_MSG', { text: 'PUZZLE_UNLOCKED: Correct entry password parsed.' });
@@ -1136,23 +1199,38 @@ const App: React.FC = () => {
     const exitPass = localStorage.getItem('pass_exit') || 'MADREST104';
     const setupPass = localStorage.getItem('pass_setup') || 'ADMIN_SETUP';
 
-    if (puzzleState === 'admin_desktop') {
-      if (powerInput === exitPass) {
+    // Always allow Exit passcode to close the application in any state/phase!
+    if (powerInput === exitPass) {
         playSynthSound('success');
         setShowPowerPrompt(false);
         setPowerInput('');
         setPowerError(false);
         if ((window as any).electron) {
-          (window as any).electron.send('EXIT_APP');
+            (window as any).electron.send('EXIT_APP');
         } else {
-          alert('System shutdown initiated (Web/Mock).');
+            alert('System shutdown initiated (Web/Mock).');
         }
-      } else {
-        setPowerError(true);
-      }
-    } else {
-      if (powerInput === adminPass) {
-        // Restrict admin password verification to only specified active event phases (locked, browsing_pdf_1)
+        return;
+    }
+
+    // Always allow Setup passcode to reset to setup wizard in any state/phase!
+    if (powerInput === setupPass) {
+        playSynthSound('success');
+        setShowPowerPrompt(false);
+        setPowerInput('');
+        setPowerError(false);
+        resetPuzzleStateAndInputs();
+        setPuzzleState('idle');
+        setOfflineStandbyActive(false);
+        setOfflineScheduledTime(null);
+        setIsForcedOfflineMode(false);
+        setShowSetup(true);
+        return;
+    }
+
+    // Admin passcode is strictly restricted to active gameplay phases (locked, browsing_pdf_1) to boot Admin Desktop.
+    // It cannot be used during idle, retired, video playback, etc.
+    if (powerInput === adminPass) {
         if (puzzleState !== 'locked' && puzzleState !== 'browsing_pdf_1') {
             setPowerError(true);
             return;
@@ -1163,8 +1241,9 @@ const App: React.FC = () => {
         setPowerInput('');
         setPowerError(false);
 
-        const isOffline = isForcedOfflineMode || (!isConnected || !isPaired);
+        const isOffline = checkActiveOffline();
         if (isOffline) {
+            // If offline, reset and open Setup Wizard (since there's no online master connection to stream telemetry to)
             resetPuzzleStateAndInputs();
             setPuzzleState('idle');
             setOfflineStandbyActive(false);
@@ -1178,21 +1257,10 @@ const App: React.FC = () => {
                emit('CONNECTION_MSG', { text: 'GOV-CORE OS: Admin mode booted successfully.' });
             }, 3000);
         }
-      } else if (powerInput === setupPass) {
-        playSynthSound('success');
-        setShowPowerPrompt(false);
-        setPowerInput('');
-        setPowerError(false);
-        resetPuzzleStateAndInputs();
-        setPuzzleState('idle');
-        setOfflineStandbyActive(false);
-        setOfflineScheduledTime(null);
-        setIsForcedOfflineMode(false);
-        setShowSetup(true);
-      } else {
-        setPowerError(true);
-      }
+        return;
     }
+
+    setPowerError(true);
   };
 
   const handleMaidDeliver = () => {
@@ -1215,7 +1283,7 @@ const App: React.FC = () => {
              setMaidDeliveryState('delivering');
 
              // Check if we are offline (forced or connection lost)
-             const isOffline = isForcedOfflineMode || (!isConnected || !isPaired);
+             const isOffline = checkActiveOffline();
 
              if (!isOffline) {
                  emit('CONNECTION_MSG', {
@@ -1279,7 +1347,7 @@ const App: React.FC = () => {
           const targetTime = new Date();
           targetTime.setHours(23, 53, 40, 0);
           setTimeOverride(targetTime);
-          setTimerSeconds(420);
+          setTimerSecondsAndTimestamp(420);
           setPuzzleState('idle');
 
           startVideoPlayback('start');
@@ -1962,72 +2030,12 @@ const App: React.FC = () => {
 
         {/* State A: browsing_pdf_1 (Fullscreen absolute layout covering everything) */}
         {puzzleState === 'browsing_pdf_1' && (
-            <div className="fixed inset-0 pt-12 pb-24 z-50 bg-[#050508] flex flex-col">
-                {/* Embedded PDF 1 viewport occupying 100% of the screen */}
-                {!showTextFallback1 ? (
-                    <iframe
-                       src="./documents/doc1.pdf#toolbar=0"
-                       className="w-full h-full border-0 bg-black"
-                       title="処刑装置起動手順_LOG_832.pdf"
-                    />
-                ) : (
-                    <div className="flex-1 bg-[#050508] p-12 overflow-y-auto font-mono text-[#eaeaea] max-w-4xl mx-auto w-full border-x border-white/5 space-y-8 relative">
-                         <div className="border-b border-red-500/30 pb-4">
-                              <span className="text-[10px] text-red-500 font-bold uppercase tracking-[0.2em]">GOV-CORE ARCHIVE // SYSTEM_INIT_LOG_832</span>
-                              <h1 className="text-3xl font-black tracking-[0.1em] text-white mt-1">処刑装置起動手順極秘ファイル</h1>
-                         </div>
-
-                         <div className="space-y-6 text-sm leading-relaxed">
-                              <div className="p-4 bg-red-950/20 border border-red-900/30 rounded-xl space-y-2">
-                                   <div className="text-red-400 font-black flex items-center gap-2">
-                                       <span>🔒 ACTIVATION PASSCODE:</span>
-                                   </div>
-                                   <p className="text-lg font-bold text-white font-mono tracking-widest pl-2">
-                                       EVT_TRIGGER_99
-                                   </p>
-                              </div>
-
-                              <div className="space-y-3">
-                                   <h3 className="text-base font-bold text-red-500">■ 処刑停止シーケンス (Termination Override System)</h3>
-                                   <p className="text-white/80 pl-2">
-                                        制限時間が残り <span className="text-red-400 font-bold underline">20秒以下</span> に到達した際、画面下部 DOCK の『EXECUTION OVERRIDE (処刑停止ツール)』が高度活性化されます。
-                                   </p>
-                                   <p className="text-white/80 pl-2">
-                                        その時間内でのみ、正しい処刑停止コード (<span className="text-red-400 font-bold">STOP CODE: OVERRIDE_SUCCESS</span>) の送信、もしくは緊急脱出コマンド (<span className="text-red-400 font-bold">EXEC_STOP_99</span>) の入力が有効となります。
-                                   </p>
-                              </div>
-
-                              <div className="space-y-3">
-                                   <h3 className="text-base font-bold text-red-500">■ 防犯監視システム (Security Grid)</h3>
-                                   <p className="text-white/80 pl-2">
-                                        高リスク監視地域を常時トラッキングするために、CAM_01 および CAM_02 チャンネルが活性化されています。
-                                   </p>
-                              </div>
-
-                              <div className="space-y-3">
-                                   <h3 className="text-base font-bold text-red-500">■ メイドコントロール (Maid Dispatch)</h3>
-                                   <p className="text-white/80 pl-2">
-                                        物品搬送要請は、部屋コードと物品コードの組み合わせが一致した場合のみ有効化されます。一致しない場合は5秒間のセキュリティ保護ロックがかかります。
-                                   </p>
-                              </div>
-
-                              <div className="space-y-3 border-t border-white/5 pt-4">
-                                   <h3 className="text-base font-bold text-red-500">■ 緊急リタイア警告</h3>
-                                   <p className="text-white/80 pl-2">
-                                        危険が生じた場合、画面上部ステータスバーの『RETIRE (緊急リタイア)』ボタンを押すことで、全プログラムをセーフロック状態へ即座にリタイア移行させることができます。
-                                   </p>
-                              </div>
-                         </div>
-                    </div>
-                )}
-
-                {/* Floating click trigger to toggle text fallback */}
-                <button
-                   onClick={() => setShowTextFallback1(!showTextFallback1)}
-                   className="absolute bottom-6 left-6 px-4 py-2.5 bg-zinc-900/90 hover:bg-zinc-800 border border-white/10 hover:border-white/20 rounded-xl text-white/80 hover:text-white transition-all text-xs font-bold font-sans flex items-center gap-2 z-[60] shadow-xl"
-                >
-                     {showTextFallback1 ? "📄 PDF表示に戻す" : "📄 PDFが表示されない場合はこちら (テキスト表示)"}
-                </button>
+            <div className="fixed inset-0 pt-12 pb-24 z-50 bg-[#050508] flex flex-col animate-fadeIn">
+                <iframe
+                   src="./documents/doc1.pdf#toolbar=0"
+                   className="w-full h-full border-0 bg-black"
+                   title="処刑装置起動手順_LOG_832.pdf"
+                />
             </div>
         )}
 
@@ -2059,52 +2067,11 @@ const App: React.FC = () => {
                             </div>
 
                             <div className="flex-1 rounded-2xl overflow-hidden bg-zinc-950 relative flex flex-col">
-                                 {!showTextFallback2 ? (
-                                     <iframe
-                                       src="./documents/doc2.pdf#toolbar=0"
-                                       className="w-full h-full border-0"
-                                       title="管理者限定極秘データ_SEC_992.pdf"
-                                     />
-                                 ) : (
-                                     <div className="flex-1 bg-[#050508] p-8 overflow-y-auto font-mono text-[#eaeaea] w-full space-y-6 relative">
-                                          <div className="border-b border-red-500/30 pb-3">
-                                               <span className="text-[9px] text-red-500 font-bold uppercase tracking-[0.2em]">GOV-CORE ARCHIVE // ADMIN_SEC_992</span>
-                                               <h1 className="text-xl font-black tracking-[0.1em] text-white mt-1">管理者限定極秘データ</h1>
-                                          </div>
-
-                                          <div className="space-y-4 text-xs leading-relaxed">
-                                               <div className="p-3 bg-red-950/20 border border-red-900/30 rounded-xl space-y-1">
-                                                    <div className="text-red-400 font-bold flex items-center gap-2">
-                                                        <span>🔒 ADMIN ACCESS PASSCODE:</span>
-                                                    </div>
-                                                    <p className="text-base font-bold text-white font-mono tracking-widest pl-2">
-                                                        ADMIN_DASH
-                                                    </p>
-                                               </div>
-
-                                               <div className="space-y-2">
-                                                    <h3 className="text-xs font-bold text-red-500">■ メイドコントロール照合表</h3>
-                                                    <p className="text-white/80 pl-1">
-                                                         部屋コードおよび物品コードは、中央データベースに登録されたJSON設定に準拠します。
-                                                    </p>
-                                               </div>
-
-                                               <div className="space-y-2">
-                                                    <h3 className="text-xs font-bold text-red-500">■ システム構成情報</h3>
-                                                    <p className="text-white/80 pl-1">
-                                                         BGMの音量は localStorage.bgmVolume にて永続保存されており、いつでも再調整が可能です。
-                                                    </p>
-                                               </div>
-                                          </div>
-                                     </div>
-                                 )}
-
-                                 <button
-                                    onClick={() => setShowTextFallback2(!showTextFallback2)}
-                                    className="absolute bottom-4 right-4 px-3 py-1.5 bg-zinc-900/95 hover:bg-zinc-800 border border-white/10 rounded-lg text-white/80 hover:text-white transition-all text-[10px] font-bold font-sans z-[60]"
-                                 >
-                                      {showTextFallback2 ? "📄 PDF表示に戻す" : "📄 PDFが表示されない場合はこちら"}
-                                 </button>
+                                 <iframe
+                                   src="./documents/doc2.pdf#toolbar=0"
+                                   className="w-full h-full border-0"
+                                   title="管理者限定極秘データ_SEC_992.pdf"
+                                 />
                             </div>
                         </motion.div>
                     )}
@@ -2261,7 +2228,6 @@ const App: React.FC = () => {
                                            {maidDeliveryState === 'testing' && (
                                                 <div className="p-4 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center gap-2">
                                                      <Loader2 size={16} className="text-white/60 animate-spin" />
-                                                     <span className="text-xs text-white/60">データ照合中（3秒待機）...</span>
                                                 </div>
                                            )}
 
@@ -2470,31 +2436,25 @@ const App: React.FC = () => {
         )}
       </main>
 
-      {/* 3. Taskbar & Dock (Bottom) */}
-      <footer className={`absolute bottom-8 left-0 w-full flex justify-center z-50 ${puzzleState === 'browsing_pdf_1' ? 'hidden' : ''}`}>
-        <nav className="glass-panel px-6 py-3.5 flex items-center gap-4 border-white/5 bg-black/60">
-              {/* Phase B: Default dock (Exit modal triggers power) */}
-              <>
-                  <div className="text-[9px] font-bold text-white/30 uppercase tracking-[0.2em] px-2 font-mono">GOV-CORE DOCK</div>
-                  <div className="w-[1px] h-6 bg-white/10 mx-1" />
-                  <button
-                    onClick={() => {
-                      if (puzzleState === 'admin_desktop') {
-                         playSynthSound('tap');
-                         alert("これは謎には関係ありません");
-                         setShowExitModal(true);
-                      } else {
-                         playSynthSound('open');
-                         setShowExitModal(true);
-                      }
-                    }}
-                    className="p-3 rounded-2xl text-white/20 hover:text-red-500 hover:bg-red-500/10 transition-all"
-                  >
-                    <Power size={20} />
-                  </button>
-              </>
+      {/* 3. Taskbar & Dock (Bottom) - Always visible on all screens except during Setup wizard */}
+      {!showSetup && !showPowerPrompt && !showExitModal && (
+      <footer className="fixed bottom-8 left-0 w-full flex justify-center z-[10200]">
+        <nav className="glass-panel px-6 py-3.5 flex items-center gap-4 border-red-500/20 bg-black/90 shadow-[0_0_30px_rgba(239,68,68,0.2)]">
+            <div className="text-[9px] font-bold text-white/40 uppercase tracking-[0.2em] px-2 font-mono">GOV-CORE DOCK</div>
+            <div className="w-[1px] h-6 bg-white/10 mx-1" />
+            <button
+              onClick={() => {
+                 playSynthSound('open');
+                 setShowPowerPrompt(true);
+              }}
+              className="p-3 rounded-2xl text-red-500 hover:text-white hover:bg-red-500/10 transition-all cursor-pointer"
+              title="管理者メニュー"
+            >
+              <Power size={20} />
+            </button>
         </nav>
       </footer>
+      )}
 
       {/* Admin Power Button Password Prompt Overlay */}
       <AnimatePresence>

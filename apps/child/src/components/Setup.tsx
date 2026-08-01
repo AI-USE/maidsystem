@@ -316,20 +316,76 @@ export const Setup: React.FC<OfflineSetupProps> = ({ onComplete, onStartOffline,
                         />
                     </div>
 
-                    <div className="pt-4 border-t border-white/5">
-                        <div className="flex justify-between items-center mb-2 px-2">
-                            <label className="text-[10px] uppercase tracking-widest text-white/40">BGM音量設定</label>
-                            <span className="text-xs text-white/80 font-mono font-bold">{bgmVolume}%</span>
+                    <div className="pt-4 border-t border-white/5 space-y-4">
+                        <div>
+                            <div className="flex justify-between items-center mb-2 px-2">
+                                <label className="text-[10px] uppercase tracking-widest text-white/40">BGM音量設定</label>
+                                <span className="text-xs text-white/80 font-mono font-bold">{bgmVolume}%</span>
+                            </div>
+                            <input
+                                type="range" min="0" max="100" step="5"
+                                className="w-full accent-white opacity-60 hover:opacity-100 transition-opacity"
+                                value={bgmVolume}
+                                onChange={(e) => setBgmVolume(parseInt(e.target.value))}
+                            />
+                            <p className="text-[9px] text-white/30 uppercase mt-2 leading-relaxed text-left px-2 font-mono">
+                                ※ 【推奨】音声はヘッドホン出力から原則として流れるよう構成されています。
+                            </p>
                         </div>
-                        <input
-                            type="range" min="0" max="100" step="5"
-                            className="w-full accent-white opacity-60 hover:opacity-100 transition-opacity"
-                            value={bgmVolume}
-                            onChange={(e) => setBgmVolume(parseInt(e.target.value))}
-                        />
-                        <p className="text-[9px] text-white/30 uppercase mt-2 leading-relaxed text-left px-2 font-mono">
-                            ※ 【推奨】音声はヘッドホン出力から原則として流れるよう構成されています。
-                        </p>
+
+                        <div className="p-4 bg-white/5 border border-white/10 rounded-2xl">
+                            <span className="text-[10px] uppercase tracking-widest text-white/40 block text-left mb-2 ml-1">🔊 オーディオ出力診断テスト</span>
+                            <button
+                                type="button"
+                                onClick={async () => {
+                                    try {
+                                        // Request temporary mic permissions to retrieve output device labels
+                                        try {
+                                            await navigator.mediaDevices.getUserMedia({ audio: true });
+                                        } catch (e) {}
+
+                                        const devices = await navigator.mediaDevices.enumerateDevices();
+                                        const audioOutputs = devices.filter(d => d.kind === 'audiooutput');
+
+                                        const speaker = audioOutputs.find(d =>
+                                            d.label.toLowerCase().includes('speaker') ||
+                                            d.label.toLowerCase().includes('built-in') ||
+                                            d.label.toLowerCase().includes('internal') ||
+                                            d.label.toLowerCase().includes('スピーカー') ||
+                                            d.label.toLowerCase().includes('realtek')
+                                        );
+
+                                        const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+                                        if (speaker && typeof (ctx as any).setSinkId === 'function') {
+                                            await (ctx as any).setSinkId(speaker.deviceId);
+                                            console.log("Audio Diagnostic Speaker output bound to:", speaker.label);
+                                        }
+
+                                        // Play dual sine wave diagnostic chime
+                                        [523.25, 659.25].forEach((freq, idx) => {
+                                            const osc = ctx.createOscillator();
+                                            const gain = ctx.createGain();
+                                            osc.type = 'sine';
+                                            osc.frequency.setValueAtTime(freq, ctx.currentTime);
+                                            gain.gain.setValueAtTime(1.0, ctx.currentTime); // MAX VOLUME
+                                            gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 1.2);
+                                            osc.connect(gain);
+                                            gain.connect(ctx.destination);
+                                            osc.start();
+                                            osc.stop(ctx.currentTime + 1.2);
+                                        });
+
+                                        alert(`スピーカー出力テスト音を最大音量で再生しました。\n検出デバイス: ${speaker ? speaker.label : 'デフォルトスピーカー (setSinkId非サポート)'}`);
+                                    } catch (err: any) {
+                                        console.error(err);
+                                        alert("スピーカーテストに失敗しました: " + err.message);
+                                    }
+                                }}
+                                className="w-full py-2.5 bg-red-950/40 hover:bg-red-950/70 text-red-400 hover:text-white border border-red-900/40 rounded-xl text-xs font-bold uppercase tracking-widest transition-all cursor-pointer"
+                            >
+                                スピーカー出力テスト
+                            </button>
+                        </div>
                     </div>
                 </div>
             </div>
