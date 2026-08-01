@@ -37,6 +37,19 @@ const synthContextRef: { current: AudioContext | null } = { current: null };
 const bgmOscillatorRef: { current: OscillatorNode | null } = { current: null };
 const bgmAudioRef: { current: HTMLAudioElement | null } = { current: null };
 
+const stopAllGlobalBgmAndOscillators = () => {
+  if (bgmAudioRef.current) {
+     bgmAudioRef.current.pause();
+     bgmAudioRef.current = null;
+  }
+  if (bgmOscillatorRef.current) {
+     try {
+         bgmOscillatorRef.current.stop();
+     } catch (e) {}
+     bgmOscillatorRef.current = null;
+  }
+};
+
 const getAudioDeviceId = async (preferType: 'headphone' | 'speaker'): Promise<string | null> => {
   try {
      // Request temporary permission to read labels
@@ -512,6 +525,24 @@ const App: React.FC = () => {
     setPostCommentaryScreen('none');
     setUseMockTimerFallback(false);
     setVideoProgress(0);
+
+    // Rigorously clean up all active synthesizers, alarms, and interval loops
+    stopAllGlobalBgmAndOscillators();
+    if (pauseAnnouncementIntervalRef.current) {
+        clearInterval(pauseAnnouncementIntervalRef.current);
+        pauseAnnouncementIntervalRef.current = null;
+    }
+    if (offlineRetireIntervalRef.current) {
+        clearInterval(offlineRetireIntervalRef.current);
+        offlineRetireIntervalRef.current = null;
+    }
+    if (deliveringTtsIntervalRef.current) {
+        clearInterval(deliveringTtsIntervalRef.current);
+        deliveringTtsIntervalRef.current = null;
+    }
+    if ('speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+    }
   }, []);
 
   const osContextValue = useMemo<OSContextType>(() => ({
@@ -574,13 +605,7 @@ const App: React.FC = () => {
   // Automatic background music (BGM) playback lifecycle control
   useEffect(() => {
     if (postCommentaryScreen !== 'none') {
-      if (bgmAudioRef.current) {
-          bgmAudioRef.current.pause();
-      }
-      if (bgmOscillatorRef.current) {
-          try { bgmOscillatorRef.current.stop(); } catch(e){}
-          bgmOscillatorRef.current = null;
-      }
+      stopAllGlobalBgmAndOscillators();
 
       const playExitBgm = () => {
          const volumeValue = parseFloat(localStorage.getItem('bgmVolume') || '50') / 100;
@@ -622,9 +647,14 @@ const App: React.FC = () => {
       puzzleState !== 'retired' &&
       !videoPlaying &&
       !isPaused &&
-      timerSeconds !== 0;
+      timerSeconds !== 0 &&
+      postCommentaryScreen === 'none';
 
     if (shouldPlayBgm) {
+      if (bgmAudioRef.current && bgmAudioRef.current.src.includes('bgm_exit.mp3')) {
+          stopAllGlobalBgmAndOscillators();
+      }
+
       if (bgmAudioRef.current) {
           bgmAudioRef.current.play().catch(e => console.log("BGM play catch:", e));
       } else {
@@ -1084,6 +1114,14 @@ const App: React.FC = () => {
         }
         if (masterPaused !== undefined && isPaused !== masterPaused) {
           setIsPaused(masterPaused);
+        }
+        // Rigorous synchronization of 'idle' state from master
+        if (masterState === 'idle' && puzzleState !== 'idle') {
+           resetPuzzleStateAndInputs();
+           setPuzzleState('idle');
+           setTimeOverride(null);
+           setTimerSecondsAndTimestamp(null);
+           setIsPaused(false);
         }
         // If master is playing and child is idle, transition!
         if (masterState === 'playing' && puzzleState === 'idle' && !videoPlaying) {
@@ -2463,7 +2501,7 @@ const App: React.FC = () => {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[600] bg-black/85 backdrop-blur-md flex items-center justify-center p-6"
+            className="fixed inset-0 z-[10300] bg-black/85 backdrop-blur-md flex items-center justify-center p-6"
           >
             <motion.div
               initial={{ scale: 0.92, opacity: 0 }}
@@ -2587,7 +2625,7 @@ const App: React.FC = () => {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[9000] bg-black/85 backdrop-blur-sm flex items-center justify-center p-6"
+            className="fixed inset-0 z-[10300] bg-black/85 backdrop-blur-sm flex items-center justify-center p-6"
           >
             <motion.div
               initial={{ scale: 0.9, opacity: 0 }}
@@ -2631,7 +2669,7 @@ const App: React.FC = () => {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm flex items-center justify-center p-6"
+            className="fixed inset-0 z-[10300] bg-black/60 backdrop-blur-sm flex items-center justify-center p-6"
           >
             <motion.div
               initial={{ scale: 0.9, opacity: 0 }}
