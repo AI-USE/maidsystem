@@ -94,12 +94,16 @@ const routeAudioToDevice = async (audioElement: HTMLAudioElement, preferType: 'h
          return;
      }
 
-     const deviceId = await getAudioDeviceId(preferType);
-     if (deviceId) {
-         console.log(`Setting ${preferType} device sink ID: ${deviceId}`);
-         await (audioElement as any).setSinkId(deviceId);
-     } else {
-         console.log(`No specific ${preferType} device found. Using system default.`);
+     try {
+         const deviceId = await getAudioDeviceId(preferType);
+         if (deviceId) {
+             console.log(`Setting ${preferType} device sink ID: ${deviceId}`);
+             await (audioElement as any).setSinkId(deviceId);
+         } else {
+             console.log(`No specific ${preferType} device found. Using system default.`);
+         }
+     } catch (sinkErr) {
+         console.warn(`Failsafe: routeAudioToDevice setSinkId failed for ${preferType}, falling back to system default.`, sinkErr);
      }
   } catch (err) {
      console.error(`Error in routeAudioToDevice for ${preferType}:`, err);
@@ -113,9 +117,13 @@ const playSpeakerAlarmSynth = async (type: 'siren' | 'chime') => {
      // Determine if offline
      const isOffline = localStorage.getItem('isOffline') === 'true' || true;
      if (isOffline && typeof (ctx as any).setSinkId === 'function') {
-         const speakerId = await getAudioDeviceId('speaker');
-         if (speakerId) {
-             await (ctx as any).setSinkId(speakerId);
+         try {
+             const speakerId = await getAudioDeviceId('speaker');
+             if (speakerId) {
+                 await (ctx as any).setSinkId(speakerId);
+             }
+         } catch (sinkErr) {
+             console.warn("Failsafe: playSpeakerAlarmSynth setSinkId failed, falling back to default audio output destination.", sinkErr);
          }
      }
 

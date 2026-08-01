@@ -356,9 +356,15 @@ export const Setup: React.FC<OfflineSetupProps> = ({ onComplete, onStartOffline,
                                         );
 
                                         const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+                                        let didBindSink = false;
                                         if (speaker && typeof (ctx as any).setSinkId === 'function') {
-                                            await (ctx as any).setSinkId(speaker.deviceId);
-                                            console.log("Audio Diagnostic Speaker output bound to:", speaker.label);
+                                            try {
+                                                await (ctx as any).setSinkId(speaker.deviceId);
+                                                console.log("Audio Diagnostic Speaker output bound to:", speaker.label);
+                                                didBindSink = true;
+                                            } catch (sinkErr) {
+                                                console.warn("Failsafe: Setup Speaker Test setSinkId failed, playing test chime through default output destination.", sinkErr);
+                                            }
                                         }
 
                                         // Play dual sine wave diagnostic chime
@@ -375,7 +381,7 @@ export const Setup: React.FC<OfflineSetupProps> = ({ onComplete, onStartOffline,
                                             osc.stop(ctx.currentTime + 1.2);
                                         });
 
-                                        alert(`スピーカー出力テスト音を最大音量で再生しました。\n検出デバイス: ${speaker ? speaker.label : 'デフォルトスピーカー (setSinkId非サポート)'}`);
+                                        alert(`スピーカー出力テスト音を最大音量で再生しました。\n検出デバイス: ${speaker ? speaker.label : 'デフォルトスピーカー'}${didBindSink ? '' : ' (デフォルト出力先にフォールバック再生)'}`);
                                     } catch (err: any) {
                                         console.error(err);
                                         alert("スピーカーテストに失敗しました: " + err.message);
