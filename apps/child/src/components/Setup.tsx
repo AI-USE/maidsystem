@@ -356,16 +356,23 @@ export const Setup: React.FC<OfflineSetupProps> = ({ onComplete, onStartOffline,
                                         );
 
                                         const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+                                        const dest = ctx.createMediaStreamDestination();
+
+                                        const audio = new Audio();
+                                        audio.srcObject = dest.stream;
+
                                         let didBindSink = false;
-                                        if (speaker && typeof (ctx as any).setSinkId === 'function') {
+                                        if (speaker && typeof (audio as any).setSinkId === 'function') {
                                             try {
-                                                await (ctx as any).setSinkId(speaker.deviceId);
+                                                await (audio as any).setSinkId(speaker.deviceId);
                                                 console.log("Audio Diagnostic Speaker output bound to:", speaker.label);
                                                 didBindSink = true;
                                             } catch (sinkErr) {
                                                 console.warn("Failsafe: Setup Speaker Test setSinkId failed, playing test chime through default output destination.", sinkErr);
                                             }
                                         }
+
+                                        audio.play().catch(e => console.log("Test stream play catch:", e));
 
                                         // Play dual sine wave diagnostic chime
                                         [523.25, 659.25].forEach((freq, idx) => {
@@ -376,7 +383,7 @@ export const Setup: React.FC<OfflineSetupProps> = ({ onComplete, onStartOffline,
                                             gain.gain.setValueAtTime(1.0, ctx.currentTime); // MAX VOLUME
                                             gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 1.2);
                                             osc.connect(gain);
-                                            gain.connect(ctx.destination);
+                                            gain.connect(dest);
                                             osc.start();
                                             osc.stop(ctx.currentTime + 1.2);
                                         });

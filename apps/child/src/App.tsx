@@ -113,19 +113,26 @@ const routeAudioToDevice = async (audioElement: HTMLAudioElement, preferType: 'h
 const playSpeakerAlarmSynth = async (type: 'siren' | 'chime') => {
   try {
      const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+     const dest = ctx.createMediaStreamDestination();
+
+     const audio = new Audio();
+     audio.srcObject = dest.stream;
 
      // Determine if offline
      const isOffline = localStorage.getItem('isOffline') === 'true' || true;
-     if (isOffline && typeof (ctx as any).setSinkId === 'function') {
+     if (isOffline && typeof (audio as any).setSinkId === 'function') {
          try {
              const speakerId = await getAudioDeviceId('speaker');
              if (speakerId) {
-                 await (ctx as any).setSinkId(speakerId);
+                 await (audio as any).setSinkId(speakerId);
+                 console.log("Successfully bound HTMLAudioElement stream source to physical speaker:", speakerId);
              }
          } catch (sinkErr) {
-             console.warn("Failsafe: playSpeakerAlarmSynth setSinkId failed, falling back to default audio output destination.", sinkErr);
+             console.warn("Failsafe: HTMLAudioElement setSinkId failed, playing through default output destination.", sinkErr);
          }
      }
+
+     audio.play().catch(e => console.log("Stream play catch:", e));
 
      if (type === 'siren') {
          // Create a loud sweeping siren sound
@@ -143,7 +150,7 @@ const playSpeakerAlarmSynth = async (type: 'siren' | 'chime') => {
          gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.8);
 
          osc.connect(gain);
-         gain.connect(ctx.destination);
+         gain.connect(dest);
          osc.start();
          osc.stop(ctx.currentTime + 0.8);
      } else {
@@ -156,7 +163,7 @@ const playSpeakerAlarmSynth = async (type: 'siren' | 'chime') => {
              gain.gain.setValueAtTime(1.0, ctx.currentTime); // MAX VOLUME
              gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 1.2);
              osc.connect(gain);
-             gain.connect(ctx.destination);
+             gain.connect(dest);
              osc.start();
              osc.stop(ctx.currentTime + 1.2);
          });
