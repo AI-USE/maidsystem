@@ -1209,9 +1209,6 @@ const App: React.FC = () => {
                                          if (confirm("全子機で一斉に【解説動画】を再生しますか？")) {
                                              sendCommand('PUZZLE_RESULT_COMMENTARY');
                                              setMasterPuzzlePhase('commentary_playing');
-                                             if ((window as any).electron) {
-                                                (window as any).electron.send('PLAY_COMMENTARY_END');
-                                             }
                                          }
                                      }}
                                      className={`flex items-center justify-center gap-4 w-full p-5 rounded-2xl border transition-all ${masterPuzzlePhase === 'waiting_commentary' ? 'bg-purple-500/10 hover:bg-purple-500/20 border-purple-500/30 text-purple-400 shadow-lg' : 'opacity-30 cursor-not-allowed bg-white/5 border-white/5 text-white/20'}`}

@@ -212,6 +212,10 @@ io.on('connection', (socket) => {
         });
     }
 
+    if (data.text === 'COMMENTARY_VIDEO_FINISHED') {
+        playDiscordTts("解説終了");
+    }
+
     if (data.text && data.text.includes('OVERRIDE_SUBMITTED:')) {
         try {
             const passMatch = data.text.match(/Submitted Passcode proposal:\s*"([^"]+)"/);
@@ -373,6 +377,16 @@ ipcMain.on('SEND_REMOTE_COMMAND', (event, { targetId, command }) => {
         postGameInterval = null;
     }
 
+    // Clear TTS Queue
+    ttsQueue = [];
+    isTtsPlaying = false;
+    currentPlayingTts = null;
+    if (audioPlayer) {
+       try {
+           audioPlayer.stop();
+       } catch (err) {}
+    }
+
     // Reset all submitted passcodes
     for (const d of devices.values()) {
         d.submittedPasscode = undefined;
@@ -463,7 +477,8 @@ const { Client, GatewayIntentBits } = require('discord.js');
 const {
   joinVoiceChannel,
   createAudioPlayer,
-  createAudioResource
+  createAudioResource,
+  AudioPlayerStatus
 } = require('@discordjs/voice');
 
 let discordClient = null;
@@ -477,6 +492,10 @@ let discordConfig = {
 let emergencyActive = false;
 let emergencyInterval = null;
 let emergencyText = '';
+
+let ttsQueue = [];
+let isTtsPlaying = false;
+let currentPlayingTts = null;
 
 // Built-in announcements for escape room events
 const defaultTriggers = {
@@ -568,6 +587,12 @@ function joinVoice(channelId) {
     });
 
     audioPlayer = createAudioPlayer();
+    audioPlayer.on(AudioPlayerStatus.Idle, () => {
+        isTtsPlaying = false;
+        currentPlayingTts = null;
+        processTtsQueue();
+    });
+
     voiceConnection.subscribe(audioPlayer);
     console.log(`Joined Discord Voice Channel: "${channel.name}"`);
   } catch (err) {
@@ -576,11 +601,35 @@ function joinVoice(channelId) {
 }
 
 // Play TTS stream directly into the Discord Voice connection
-function playDiscordTts(text) {
+function playDiscordTts(text, priority = false) {
   if (!audioPlayer || !text) {
     console.log('Discord audio player is not connected, skipped playing TTS.');
     return;
   }
+
+  // Prevent duplicate announcements from flooding the queue
+  if (ttsQueue.includes(text) || (isTtsPlaying && currentPlayingTts === text)) {
+    console.log(`TTS text "${text}" is already in queue or playing, skipping duplicate.`);
+    return;
+  }
+
+  if (priority) {
+    ttsQueue.unshift(text);
+  } else {
+    ttsQueue.push(text);
+  }
+
+  processTtsQueue();
+}
+
+function processTtsQueue() {
+  if (!audioPlayer || isTtsPlaying || ttsQueue.length === 0) {
+    return;
+  }
+
+  isTtsPlaying = true;
+  const text = ttsQueue.shift();
+  currentPlayingTts = text;
 
   try {
     const ttsUrl = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(text)}&tl=ja&client=tw-ob`;
@@ -589,6 +638,9 @@ function playDiscordTts(text) {
     console.log(`Dispatched Voice TTS to channel: "${text}"`);
   } catch (err) {
     console.error('Failed to play Discord TTS stream:', err);
+    isTtsPlaying = false;
+    currentPlayingTts = null;
+    setTimeout(processTtsQueue, 500);
   }
 }
 

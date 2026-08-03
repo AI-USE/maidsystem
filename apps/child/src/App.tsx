@@ -313,6 +313,62 @@ const playSynthSound = (type: 'tap' | 'type' | 'open' | 'success' | 'bgm') => {
   }
 };
 
+const speechQueue: string[] = [];
+let isSpeechPlaying = false;
+
+const speakWithQueue = (text: string, forcePriority = false) => {
+  if (!('speechSynthesis' in window)) return;
+
+  // Prevent duplicate announcements from flooding the queue
+  if (speechQueue.includes(text)) {
+     return;
+  }
+
+  if (forcePriority) {
+     window.speechSynthesis.cancel();
+     speechQueue.length = 0; // Clear queue for high-priority override (e.g. emergency)
+     speechQueue.push(text);
+     isSpeechPlaying = false;
+  } else {
+     speechQueue.push(text);
+  }
+
+  processSpeechQueue();
+};
+
+const processSpeechQueue = () => {
+  if (!('speechSynthesis' in window)) return;
+  if (isSpeechPlaying || speechQueue.length === 0) return;
+
+  isSpeechPlaying = true;
+  const text = speechQueue.shift();
+
+  const utterance = new SpeechSynthesisUtterance(text);
+  utterance.lang = 'ja-JP';
+  utterance.rate = 1.0;
+  utterance.volume = 1.0;
+
+  utterance.onend = () => {
+     isSpeechPlaying = false;
+     setTimeout(processSpeechQueue, 300);
+  };
+
+  utterance.onerror = () => {
+     isSpeechPlaying = false;
+     setTimeout(processSpeechQueue, 300);
+  };
+
+  window.speechSynthesis.speak(utterance);
+};
+
+const clearSpeechQueueAndCancel = () => {
+  if ('speechSynthesis' in window) {
+     window.speechSynthesis.cancel();
+  }
+  speechQueue.length = 0;
+  isSpeechPlaying = false;
+};
+
 const App: React.FC = () => {
   const [showExitModal, setShowExitModal] = useState(false);
   const [showSetup, setShowSetup] = useState(true); // Always show setup wizard on startup
@@ -490,13 +546,11 @@ const App: React.FC = () => {
         speechText = "残念、タイムアップです。処刑装置が完全に作動しました。スタッフの指示に従い、退出のご案内をお待ちください。";
       }
 
-      if ('speechSynthesis' in window) {
-         window.speechSynthesis.cancel();
-         const utterance = new SpeechSynthesisUtterance(speechText);
-         utterance.lang = 'ja-JP';
-         utterance.rate = 1.0;
-         utterance.volume = 1.0;
-         window.speechSynthesis.speak(utterance);
+      speakWithQueue(speechText);
+
+      const isOffline = checkActiveOffline();
+      if (!isOffline) {
+          emit('CONNECTION_MSG', { text: 'COMMENTARY_VIDEO_FINISHED' });
       }
     }
 
@@ -563,9 +617,7 @@ const App: React.FC = () => {
         clearInterval(deliveringTtsIntervalRef.current);
         deliveringTtsIntervalRef.current = null;
     }
-    if ('speechSynthesis' in window) {
-        window.speechSynthesis.cancel();
-    }
+    clearSpeechQueueAndCancel();
   }, []);
 
   const osContextValue = useMemo<OSContextType>(() => ({
@@ -719,28 +771,16 @@ const App: React.FC = () => {
   // Handle repeating TTS for pause state
   useEffect(() => {
     if (isPaused) {
-      const speakAnnouncementLocal = (text: string) => {
-        if ('speechSynthesis' in window) {
-          window.speechSynthesis.cancel();
-          const utterance = new SpeechSynthesisUtterance(text);
-          utterance.lang = 'ja-JP';
-          utterance.rate = 1.0;
-          window.speechSynthesis.speak(utterance);
-        }
-      };
-
-      speakAnnouncementLocal("現在ゲーム停止中");
+      speakWithQueue("現在ゲーム停止中");
       pauseAnnouncementIntervalRef.current = setInterval(() => {
-         speakAnnouncementLocal("現在ゲーム停止中");
+         speakWithQueue("現在ゲーム停止中");
       }, 5000);
     } else {
       if (pauseAnnouncementIntervalRef.current) {
         clearInterval(pauseAnnouncementIntervalRef.current);
         pauseAnnouncementIntervalRef.current = null;
       }
-      if ('speechSynthesis' in window) {
-        window.speechSynthesis.cancel();
-      }
+      clearSpeechQueueAndCancel();
     }
     return () => {
       if (pauseAnnouncementIntervalRef.current) {
@@ -815,26 +855,11 @@ const App: React.FC = () => {
 
              // Announcements
              if (next === 30) {
-                 if ('speechSynthesis' in window) {
-                     window.speechSynthesis.cancel();
-                     const utterance = new SpeechSynthesisUtterance("間もなく処刑コードが入力できます。");
-                     utterance.lang = 'ja-JP';
-                     utterance.rate = 1.0;
-                     utterance.volume = 1.0;
-                     window.speechSynthesis.speak(utterance);
-                 }
+                 speakWithQueue("間もなく処刑コードが入力できます。");
              } else if (next <= 10) {
                  const pitch = next === 1 ? 1200 : 880;
                  playRhythmTick(pitch, 0.15);
-
-                 if ('speechSynthesis' in window) {
-                     window.speechSynthesis.cancel();
-                     const utterance = new SpeechSynthesisUtterance(String(next));
-                     utterance.lang = 'ja-JP';
-                     utterance.rate = 1.3;
-                     utterance.volume = 0.8;
-                     window.speechSynthesis.speak(utterance);
-                 }
+                 speakWithQueue(String(next), true);
              }
              return next;
           });
@@ -858,29 +883,14 @@ const App: React.FC = () => {
 
                    // 1. Speak announcement at exactly 30 seconds remaining
                    if (next === 30) {
-                       if ('speechSynthesis' in window) {
-                           window.speechSynthesis.cancel();
-                           const utterance = new SpeechSynthesisUtterance("間もなく処刑コードが入力できます。");
-                           utterance.lang = 'ja-JP';
-                           utterance.rate = 1.0;
-                           utterance.volume = 1.0;
-                           window.speechSynthesis.speak(utterance);
-                       }
+                       speakWithQueue("間もなく処刑コードが入力できます。");
                    }
 
                    // 2. Play rhythmic beeps and countdown speech under 10 seconds remaining
                    if (next <= 10) {
                        const pitch = next === 1 ? 1200 : 880;
                        playRhythmTick(pitch, 0.15);
-
-                       if ('speechSynthesis' in window) {
-                           window.speechSynthesis.cancel();
-                           const utterance = new SpeechSynthesisUtterance(String(next));
-                           utterance.lang = 'ja-JP';
-                           utterance.rate = 1.3;
-                           utterance.volume = 0.8;
-                           window.speechSynthesis.speak(utterance);
-                       }
+                       speakWithQueue(String(next), true);
                    }
                }
             }
@@ -916,15 +926,8 @@ const App: React.FC = () => {
 
        const playVocalAlarm = () => {
           playSpeakerAlarmSynth('siren', isOffline);
-          if ('speechSynthesis' in window) {
-              window.speechSynthesis.cancel();
-              const text = `警告、部屋名${deviceName}、リタイア。`;
-              const utterance = new SpeechSynthesisUtterance(text);
-              utterance.lang = 'ja-JP';
-              utterance.rate = 1.0;
-              utterance.volume = 1.0; // MAX volume
-              window.speechSynthesis.speak(utterance);
-          }
+          const text = `警告、部屋名${deviceName}、リタイア。`;
+          speakWithQueue(text, true);
        };
 
        playVocalAlarm();
@@ -933,9 +936,7 @@ const App: React.FC = () => {
        if (offlineRetireIntervalRef.current) {
            clearInterval(offlineRetireIntervalRef.current);
            offlineRetireIntervalRef.current = null;
-           if ('speechSynthesis' in window) {
-               window.speechSynthesis.cancel();
-           }
+           clearSpeechQueueAndCancel();
        }
     }
     return () => {
@@ -959,15 +960,8 @@ const App: React.FC = () => {
        if (isOffline) {
           const speakDeliveringOffline = () => {
              playSpeakerAlarmSynth('chime', isOffline);
-             if ('speechSynthesis' in window) {
-                 window.speechSynthesis.cancel();
-                 const text = `部屋名${deviceName}、アイテム${itemName}、配達要請。`;
-                 const utterance = new SpeechSynthesisUtterance(text);
-                 utterance.lang = 'ja-JP';
-                 utterance.rate = 1.0;
-                 utterance.volume = 1.0; // MAX volume
-                 window.speechSynthesis.speak(utterance);
-             }
+             const text = `部屋名${deviceName}、アイテム${itemName}、配達要請。`;
+             speakWithQueue(text);
           };
 
           speakDeliveringOffline();
@@ -979,9 +973,7 @@ const App: React.FC = () => {
                   clearInterval(deliveringTtsIntervalRef.current);
                   deliveringTtsIntervalRef.current = null;
               }
-              if ('speechSynthesis' in window) {
-                  window.speechSynthesis.cancel();
-              }
+              clearSpeechQueueAndCancel();
               // Add to delivered items list to persist the successful delivery state
               const itemToDeliver = maidItemInput;
               setDeliveredItems(prev => {
@@ -1008,9 +1000,7 @@ const App: React.FC = () => {
        if (deliveringTtsIntervalRef.current) {
            clearInterval(deliveringTtsIntervalRef.current);
            deliveringTtsIntervalRef.current = null;
-           if ('speechSynthesis' in window) {
-               window.speechSynthesis.cancel();
-           }
+           clearSpeechQueueAndCancel();
        }
     }
     return () => {
