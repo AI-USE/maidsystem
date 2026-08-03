@@ -54,7 +54,8 @@ const getAudioDeviceId = async (preferType: 'headphone' | 'speaker'): Promise<st
   try {
      // Request temporary permission to read labels
      try {
-       await navigator.mediaDevices.getUserMedia({ audio: true });
+       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+       stream.getTracks().forEach(track => track.stop());
      } catch (err) {
        console.log("Mic permission warning inside getAudioDeviceId:", err);
      }
@@ -110,7 +111,7 @@ const routeAudioToDevice = async (audioElement: HTMLAudioElement, preferType: 'h
   }
 };
 
-const playSpeakerAlarmSynth = async (type: 'siren' | 'chime') => {
+const playSpeakerAlarmSynth = async (type: 'siren' | 'chime', isOffline: boolean = true) => {
   try {
      const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
      const dest = ctx.createMediaStreamDestination();
@@ -118,8 +119,6 @@ const playSpeakerAlarmSynth = async (type: 'siren' | 'chime') => {
      const audio = new Audio();
      audio.srcObject = dest.stream;
 
-     // Determine if offline
-     const isOffline = localStorage.getItem('isOffline') === 'true' || true;
      if (isOffline && typeof (audio as any).setSinkId === 'function') {
          try {
              const speakerId = await getAudioDeviceId('speaker');
@@ -333,7 +332,6 @@ const App: React.FC = () => {
   const [showPuzzleInputRaw, setShowPuzzleInputRaw] = useState(false);
   const [puzzleError, setPuzzleError] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
-  const pauseAnnouncementIntervalRef = useRef<any>(null);
 
   const [showRetireConfirm, setShowRetireConfirm] = useState(false);
 
@@ -358,33 +356,6 @@ const App: React.FC = () => {
 
   // Security Camera Active Channel (1 or 2)
   const [activeCamChannel, setActiveCamChannel] = useState<number>(1);
-  const cam1VideoRef = useRef<HTMLVideoElement>(null);
-  const cam2VideoRef = useRef<HTMLVideoElement>(null);
-  const activeVideoRef = useRef<HTMLVideoElement>(null);
-  const childEndTimestampRef = useRef<number | null>(null);
-  const lastAnnouncedSecRef = useRef<number | null>(null);
-  const offlineRetireIntervalRef = useRef<any>(null);
-  const deliveringTtsIntervalRef = useRef<any>(null);
-
-
-  // Synchronize absolute child JST timestamp countdown on pause/resume transitions
-  useEffect(() => {
-    if (isPaused) {
-       // paused
-    } else {
-       if (timerSeconds !== null && timerSeconds > 0) {
-           childEndTimestampRef.current = Date.now() + timerSeconds * 1000;
-       }
-    }
-  }, [isPaused]);
-
-  useEffect(() => {
-    if (videoPlaying && activeVideoRef.current) {
-        activeVideoRef.current.play().catch(e => {
-            console.warn("Explicit video play failed or was blocked by browser. Retrying on interaction.", e);
-        });
-    }
-  }, [videoPlaying, videoType]);
 
   // Maid controls state
   const [isEventUnlocked, setIsEventUnlocked] = useState(false);
@@ -394,22 +365,6 @@ const App: React.FC = () => {
   const [maidDeliveryError, setMaidDeliveryError] = useState('');
   const [maidTimer, setMaidTimer] = useState(0);
   const [deliveredItemCodes, setDeliveredItems] = useState<string[]>([]);
-
-  useEffect(() => {
-    let interval: any;
-    if (maidTimer > 0) {
-      interval = setInterval(() => {
-        setMaidTimer(prev => {
-          if (prev <= 1) {
-            setMaidDeliveryState('idle');
-            return 0;
-          }
-          return prev - 1;
-        });
-      }, 1000);
-    }
-    return () => clearInterval(interval);
-  }, [maidTimer]);
 
   // Results & Post-Commentary State
   const [gameResult, setGameResult] = useState<'none' | 'correct' | 'close' | 'failed'>('none');
@@ -436,8 +391,17 @@ const App: React.FC = () => {
   const [offlineScheduledTime, setOfflineScheduledTime] = useState<{ hour: string; minute: string; second: string } | null>(null);
   const [offlineStandbyActive, setOfflineStandbyActive] = useState(false);
 
-  // Standby background key sequence buffer for shutdown
+  // All refs
+  const pauseAnnouncementIntervalRef = useRef<any>(null);
+  const cam1VideoRef = useRef<HTMLVideoElement>(null);
+  const cam2VideoRef = useRef<HTMLVideoElement>(null);
+  const activeVideoRef = useRef<HTMLVideoElement>(null);
+  const childEndTimestampRef = useRef<number | null>(null);
+  const lastAnnouncedSecRef = useRef<number | null>(null);
+  const offlineRetireIntervalRef = useRef<any>(null);
+  const deliveringTtsIntervalRef = useRef<any>(null);
   const typedBufferRef = useRef<string>('');
+  const audioRefs = useRef<{ [key: string]: HTMLAudioElement }>({});
 
   const { isConnected, isPaired, lastCommand, emit } = useRemoteControl(isForcedOfflineMode ? null : masterUrl);
 
@@ -454,7 +418,41 @@ const App: React.FC = () => {
          childEndTimestampRef.current = null;
      }
   }, []);
-  const audioRefs = useRef<{ [key: string]: HTMLAudioElement }>({});
+
+  // Synchronize absolute child JST timestamp countdown on pause/resume transitions
+  useEffect(() => {
+    if (isPaused) {
+       // paused
+    } else {
+       if (timerSeconds !== null && timerSeconds > 0) {
+           childEndTimestampRef.current = Date.now() + timerSeconds * 1000;
+       }
+    }
+  }, [isPaused, timerSeconds]);
+
+  useEffect(() => {
+    if (videoPlaying && activeVideoRef.current) {
+        activeVideoRef.current.play().catch(e => {
+            console.warn("Explicit video play failed or was blocked by browser. Retrying on interaction.", e);
+        });
+    }
+  }, [videoPlaying, videoType]);
+
+  useEffect(() => {
+    let interval: any;
+    if (maidTimer > 0) {
+      interval = setInterval(() => {
+        setMaidTimer(prev => {
+          if (prev <= 1) {
+            setMaidDeliveryState('idle');
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    }
+    return () => clearInterval(interval);
+  }, [maidTimer]);
 
   const getVideoSrc = useCallback(() => {
     switch (videoType) {
@@ -899,17 +897,22 @@ const App: React.FC = () => {
   }, [puzzleState, timerSeconds, checkActiveOffline]);
 
   // Offline emergency retire loud alarm loop
+  // - Online: No local loops on the child terminal; notifications are handled on Master OS.
+  // - Offline: Plays siren and loops a local speaker vocal warning with its room name and the retired status until Setup/Admin config panel is opened.
   useEffect(() => {
     const isOffline = checkActiveOffline();
     if (puzzleState === 'retired' && isOffline) {
        // Suppress regular BGM
        if (bgmAudioRef.current) bgmAudioRef.current.pause();
 
+       const deviceName = localStorage.getItem('deviceName') || '端末';
+
        const playVocalAlarm = () => {
-          playSpeakerAlarmSynth('siren');
+          playSpeakerAlarmSynth('siren', isOffline);
           if ('speechSynthesis' in window) {
               window.speechSynthesis.cancel();
-              const utterance = new SpeechSynthesisUtterance("警告、緊急リタイアが実行されました。スタッフを呼び出してください。");
+              const text = `警告、部屋名${deviceName}、リタイア。`;
+              const utterance = new SpeechSynthesisUtterance(text);
               utterance.lang = 'ja-JP';
               utterance.rate = 1.0;
               utterance.volume = 1.0; // MAX volume
@@ -935,37 +938,36 @@ const App: React.FC = () => {
     };
   }, [puzzleState, checkActiveOffline]);
 
-  // Unified Maid delivering loop (loops "ただいま配達中です。" or "ただいま配達中です。[端末名]、[物品名]、運んでください。" at max volume for 8s if offline)
+  // Unified Maid delivering loop:
+  // - Online: No local speaker announcement or continuous chime on the child terminal. It is sent to parent and announced on Discord TTS.
+  // - Offline: Play warning chime on child terminal speakers, announce requested Room/Item name via local SpeechSynthesis for exactly 10 seconds, then automatically mark as delivered (completed) on the child terminal.
   useEffect(() => {
     if (maidDeliveryState === 'delivering') {
        const isOffline = checkActiveOffline();
 
        const matched = maidItemsData.find(entry => entry.roomCode === maidRoomInput && entry.itemCode === maidItemInput);
        const itemName = matched ? matched.name : '物品';
-
-       const speakDelivering = () => {
-          playSpeakerAlarmSynth('chime');
-          if ('speechSynthesis' in window) {
-              window.speechSynthesis.cancel();
-
-              const text = isOffline
-                ? `ただいま配達中です。${localStorage.getItem('deviceName') || '端末'}、${itemName}、運んでください。`
-                : `ただいま配達中です。`;
-
-              const utterance = new SpeechSynthesisUtterance(text);
-              utterance.lang = 'ja-JP';
-              utterance.rate = 1.0;
-              utterance.volume = 1.0; // MAX volume
-              window.speechSynthesis.speak(utterance);
-          }
-       };
-
-       speakDelivering();
-       deliveringTtsIntervalRef.current = setInterval(speakDelivering, 3000);
+       const deviceName = localStorage.getItem('deviceName') || '端末';
 
        if (isOffline) {
-          // Reset to idle after exactly 8 seconds if offline
-          setTimeout(() => {
+          const speakDeliveringOffline = () => {
+             playSpeakerAlarmSynth('chime', isOffline);
+             if ('speechSynthesis' in window) {
+                 window.speechSynthesis.cancel();
+                 const text = `部屋名${deviceName}、アイテム${itemName}、配達要請。`;
+                 const utterance = new SpeechSynthesisUtterance(text);
+                 utterance.lang = 'ja-JP';
+                 utterance.rate = 1.0;
+                 utterance.volume = 1.0; // MAX volume
+                 window.speechSynthesis.speak(utterance);
+             }
+          };
+
+          speakDeliveringOffline();
+          deliveringTtsIntervalRef.current = setInterval(speakDeliveringOffline, 4000); // loop every 4 seconds
+
+          // Auto-complete (delivery finished) after exactly 10 seconds if offline
+          const offlineTimer = setTimeout(() => {
               if (deliveringTtsIntervalRef.current) {
                   clearInterval(deliveringTtsIntervalRef.current);
                   deliveringTtsIntervalRef.current = null;
@@ -973,10 +975,27 @@ const App: React.FC = () => {
               if ('speechSynthesis' in window) {
                   window.speechSynthesis.cancel();
               }
+              // Add to delivered items list to persist the successful delivery state
+              const itemToDeliver = maidItemInput;
+              setDeliveredItems(prev => {
+                  if (prev.includes(itemToDeliver)) return prev;
+                  return [...prev, itemToDeliver];
+              });
               setMaidDeliveryState('idle');
               setMaidRoomInput('');
               setMaidItemInput('');
-          }, 8000);
+          }, 10000);
+
+          return () => {
+              clearTimeout(offlineTimer);
+              if (deliveringTtsIntervalRef.current) {
+                  clearInterval(deliveringTtsIntervalRef.current);
+              }
+          };
+       } else {
+          // Online: Do not play local looping TTS announcements.
+          // Play a single success chime locally at the start of delivery request submission as confirmation.
+          playSynthSound('success');
        }
     } else {
        if (deliveringTtsIntervalRef.current) {
@@ -1304,10 +1323,10 @@ const App: React.FC = () => {
         return;
     }
 
-    // Admin passcode is strictly restricted to active gameplay phases (locked, browsing_pdf_1) to boot Admin Desktop.
-    // It cannot be used during idle, retired, video playback, etc.
+    // Admin passcode is strictly restricted to active gameplay phases (locked, browsing_pdf_1) and retired state to boot Admin Desktop.
+    // It cannot be used during idle, video playback, etc.
     if (powerInput === adminPass) {
-        if (puzzleState !== 'locked' && puzzleState !== 'browsing_pdf_1') {
+        if (puzzleState !== 'locked' && puzzleState !== 'browsing_pdf_1' && puzzleState !== 'retired') {
             setPowerError(true);
             return;
         }

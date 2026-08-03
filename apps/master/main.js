@@ -64,9 +64,9 @@ function triggerDeliveriesLoop() {
     for (const d of activeDeliveries.values()) {
         const dev = devices.get(d.deviceId);
         const devName = dev ? (dev.name || `端末`) : '子機';
-        phrases.push(`部屋名${devName}の${d.itemName}`);
+        phrases.push(`部屋名${devName}、アイテム${d.itemName}、配達要請。`);
     }
-    return phrases.join('、および') + '、配達要請。';
+    return phrases.join(' ');
   };
 
   const text = buildAnnouncementText();
@@ -76,7 +76,7 @@ function triggerDeliveriesLoop() {
     if (!emergencyActive && activeDeliveries.size > 0) {
       playDiscordTts(buildAnnouncementText());
     }
-  }, 10000);
+  }, 8000);
 }
 
 function createWindow() {

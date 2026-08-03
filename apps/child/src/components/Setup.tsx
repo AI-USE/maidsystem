@@ -341,7 +341,8 @@ export const Setup: React.FC<OfflineSetupProps> = ({ onComplete, onStartOffline,
                                     try {
                                         // Request temporary mic permissions to retrieve output device labels
                                         try {
-                                            await navigator.mediaDevices.getUserMedia({ audio: true });
+                                            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                                            stream.getTracks().forEach(track => track.stop());
                                         } catch (e) {}
 
                                         const devices = await navigator.mediaDevices.enumerateDevices();
