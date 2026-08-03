@@ -36,7 +36,7 @@ const App: React.FC = () => {
   const [selectedChild, setSelectedChild] = useState<string>('all');
   const [connectedDevices, setConnectedDevices] = useState<DeviceInfo[]>([]);
   const [cameraFps, setCameraFps] = useState(10);
-  const [cameraActive, setCameraActive] = useState(false);
+  const [cameraActive, setCameraActive] = useState(true);
   const [isFrozen, setIsFrozen] = useState(false);
   const [logMessage, setLogMessage] = useState('');
   const [notificationText, setNotificationText] = useState('');

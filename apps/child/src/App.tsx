@@ -434,7 +434,7 @@ const App: React.FC = () => {
   const [overrideText, setOverrideText] = useState('');
 
   // Remote state
-  const [cameraActive, setCameraActive] = useState(false);
+  const [cameraActive, setCameraActive] = useState(true);
   const [cameraFps, setCameraFps] = useState(10);
   const [isFrozen, setIsFrozen] = useState(false);
   const [errorPopup, setErrorPopup] = useState<string | null>(null);
