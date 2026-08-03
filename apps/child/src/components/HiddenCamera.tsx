@@ -10,6 +10,11 @@ export const HiddenCamera: React.FC<HiddenCameraProps> = ({ active, fps, onFrame
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const onFrameRef = useRef(onFrame);
+
+  useEffect(() => {
+    onFrameRef.current = onFrame;
+  }, [onFrame]);
 
   useEffect(() => {
     if (active) {
@@ -34,14 +39,14 @@ export const HiddenCamera: React.FC<HiddenCameraProps> = ({ active, fps, onFrame
             if (ctx) {
               ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
               const data = canvas.toDataURL('image/jpeg', 0.5);
-              onFrame(data);
+              onFrameRef.current(data);
             }
           }
         }
       }, 1000 / fps);
     }
     return () => clearInterval(interval);
-  }, [active, fps, onFrame]);
+  }, [active, fps]);
 
   const startCamera = async () => {
     try {

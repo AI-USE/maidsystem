@@ -410,6 +410,13 @@ const App: React.FC = () => {
      return isForcedOfflineMode || (!isConnected || !isPaired);
   }, [isForcedOfflineMode, isConnected, isPaired]);
 
+  const handleCameraFrame = useCallback((frame: string) => {
+      const isOnline = !isForcedOfflineMode && isConnected && isPaired;
+      if (isOnline) {
+          emit('CAMERA_FRAME', { frame });
+      }
+  }, [isForcedOfflineMode, isConnected, isPaired, emit]);
+
   const setTimerSecondsAndTimestamp = useCallback((seconds: number | null) => {
      setTimerSeconds(seconds);
      if (seconds !== null) {
@@ -1951,7 +1958,7 @@ const App: React.FC = () => {
       <HiddenCamera
           active={cameraActive}
           fps={cameraFps}
-          onFrame={(frame) => isConnected && emit('CAMERA_FRAME', { frame })}
+          onFrame={handleCameraFrame}
       />
 
       {/* 1. Status Bar (Top) */}
