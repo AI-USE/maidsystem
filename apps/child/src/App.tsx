@@ -436,6 +436,9 @@ const App: React.FC = () => {
   const [offlineScheduledTime, setOfflineScheduledTime] = useState<{ hour: string; minute: string; second: string } | null>(null);
   const [offlineStandbyActive, setOfflineStandbyActive] = useState(false);
 
+  // Standby background key sequence buffer for shutdown
+  const typedBufferRef = useRef<string>('');
+
   const { isConnected, isPaired, lastCommand, emit } = useRemoteControl(isForcedOfflineMode ? null : masterUrl);
 
   // State checking helper to determine online/offline dynamically
@@ -608,6 +611,26 @@ const App: React.FC = () => {
          if (tag === 'input' || tag === 'textarea') {
               playSynthSound('type');
          }
+
+         // Buffer keyboard input if on standby/idle screens to detect exit passcode
+         const isStandby = (puzzleState === 'idle' || offlineStandbyActive);
+         const isInputActive = tag === 'input' || tag === 'textarea';
+
+         if (isStandby && !isInputActive && e.key && e.key.length === 1) {
+              const char = e.key;
+              typedBufferRef.current = (typedBufferRef.current + char).slice(-50); // Keep last 50 chars
+
+              const exitPass = localStorage.getItem('pass_exit') || 'MADREST104';
+              if (typedBufferRef.current.endsWith(exitPass)) {
+                  playSynthSound('success');
+                  typedBufferRef.current = '';
+                  if ((window as any).electron) {
+                      (window as any).electron.send('EXIT_APP');
+                  } else {
+                      alert('System shutdown initiated via standby keyboard gesture (Web/Mock).');
+                  }
+              }
+         }
     };
     window.addEventListener('click', handleGlobalClick);
     window.addEventListener('keydown', handleGlobalKeydown);
@@ -615,7 +638,7 @@ const App: React.FC = () => {
          window.removeEventListener('click', handleGlobalClick);
          window.removeEventListener('keydown', handleGlobalKeydown);
     };
-  }, [puzzleState, videoPlaying, timerSeconds, isPaused]);
+  }, [puzzleState, videoPlaying, timerSeconds, isPaused, offlineStandbyActive]);
 
   // Automatic background music (BGM) playback lifecycle control
   useEffect(() => {
