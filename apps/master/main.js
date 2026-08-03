@@ -11,6 +11,44 @@ const socketMap = new Map(); // socket.id -> deviceId
 const activeDeliveries = new Map(); // itemCode -> { deviceId, roomCode, itemCode, itemName, intervalId, socketId }
 let deliveriesLoopInterval = null;
 
+const fs = require('fs');
+const devicesFilePath = path.join(app ? app.getPath('userData') : __dirname, 'mados_devices.json');
+
+function loadDevices() {
+  try {
+    if (fs.existsSync(devicesFilePath)) {
+      const data = JSON.parse(fs.readFileSync(devicesFilePath, 'utf8'));
+      for (const [key, value] of Object.entries(data)) {
+         devices.set(key, {
+            id: value.id,
+            name: value.name,
+            online: false,
+            socketId: null,
+            activeApp: 'IDLE',
+            puzzleState: 'idle',
+            isPaused: false
+         });
+      }
+      console.log("Loaded persisted devices list:", devices.size);
+    }
+  } catch (e) {
+    console.error("Failed to load persisted devices:", e);
+  }
+}
+
+function saveDevices() {
+  try {
+    const data = {};
+    for (const [key, value] of devices.entries()) {
+       data[key] = { id: value.id, name: value.name };
+    }
+    fs.writeFileSync(devicesFilePath, JSON.stringify(data, null, 2), 'utf8');
+    console.log("Saved persisted devices list:", devices.size);
+  } catch (e) {
+    console.error("Failed to save devices:", e);
+  }
+}
+
 function triggerDeliveriesLoop() {
   if (deliveriesLoopInterval) {
     clearInterval(deliveriesLoopInterval);
@@ -129,6 +167,8 @@ io.on('connection', (socket) => {
           name: data.name || `DEVICE_${sid.substring(0, 4)}`,
           socket: socket
       });
+      // Force child to clear 'isPaired' and show "Waiting for Approval" screen until master operator approves!
+      socket.emit('PAIRING_RESULT', { success: false });
       updatePendingApprovals();
   });
 
@@ -254,8 +294,11 @@ ipcMain.on('APPROVE_PAIRING', (event, sid) => {
             socketId: sid,
             name: pending.name,
             online: true,
-            activeApp: 'IDLE'
+            activeApp: 'IDLE',
+            puzzleState: 'idle',
+            isPaused: false
         });
+        saveDevices(); // Save newly approved devices!
         pending.socket.emit('PAIRING_RESULT', { success: true });
         pendingApprovals.delete(sid);
         updateDeviceList();
@@ -275,6 +318,7 @@ ipcMain.on('REJECT_PAIRING', (event, deviceId) => {
 ipcMain.on('REMOVE_DEVICE', (event, deviceId) => {
     if (devices.has(deviceId)) {
         devices.delete(deviceId);
+        saveDevices(); // Save updated devices list!
         updateDeviceList();
     }
 });
@@ -403,7 +447,10 @@ function startServer(port) {
 
 startServer(3030);
 
-app.whenReady().then(createWindow);
+app.whenReady().then(() => {
+  loadDevices();
+  createWindow();
+});
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();

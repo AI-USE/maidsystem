@@ -348,11 +348,11 @@ export const Setup: React.FC<OfflineSetupProps> = ({ onComplete, onStartOffline,
                                         const audioOutputs = devices.filter(d => d.kind === 'audiooutput');
 
                                         const speaker = audioOutputs.find(d =>
+                                            d.label.toLowerCase().includes('speakers') ||
                                             d.label.toLowerCase().includes('speaker') ||
                                             d.label.toLowerCase().includes('built-in') ||
                                             d.label.toLowerCase().includes('internal') ||
-                                            d.label.toLowerCase().includes('スピーカー') ||
-                                            d.label.toLowerCase().includes('realtek')
+                                            d.label.toLowerCase().includes('スピーカー')
                                         );
 
                                         const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();

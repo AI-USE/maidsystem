@@ -65,19 +65,19 @@ const getAudioDeviceId = async (preferType: 'headphone' | 'speaker'): Promise<st
      let targetDevice = null;
      if (preferType === 'headphone') {
          targetDevice = audioOutputs.find(d =>
+             d.label.toLowerCase().includes('headphones') ||
              d.label.toLowerCase().includes('headphone') ||
-             d.label.toLowerCase().includes('earphone') ||
+             d.label.toLowerCase().includes('headset') ||
              d.label.toLowerCase().includes('イヤホン') ||
-             d.label.toLowerCase().includes('ヘッドホン') ||
-             d.label.toLowerCase().includes('headset')
+             d.label.toLowerCase().includes('ヘッドホン')
          );
      } else {
          targetDevice = audioOutputs.find(d =>
+             d.label.toLowerCase().includes('speakers') ||
              d.label.toLowerCase().includes('speaker') ||
              d.label.toLowerCase().includes('built-in') ||
              d.label.toLowerCase().includes('internal') ||
-             d.label.toLowerCase().includes('スピーカー') ||
-             d.label.toLowerCase().includes('realtek')
+             d.label.toLowerCase().includes('スピーカー')
          );
      }
 
@@ -1294,22 +1294,14 @@ const App: React.FC = () => {
         setPowerInput('');
         setPowerError(false);
 
-        const isOffline = checkActiveOffline();
-        if (isOffline) {
-            // If offline, reset and open Setup Wizard (since there's no online master connection to stream telemetry to)
-            resetPuzzleStateAndInputs();
-            setPuzzleState('idle');
-            setOfflineStandbyActive(false);
-            setOfflineScheduledTime(null);
-            setIsForcedOfflineMode(false);
-            setShowSetup(true);
-        } else {
-            setPuzzleState('boot_loading');
-            setTimeout(() => {
-               setPuzzleState('admin_desktop');
+        setPuzzleState('boot_loading');
+        setTimeout(() => {
+           setPuzzleState('admin_desktop');
+           const isOffline = checkActiveOffline();
+           if (!isOffline) {
                emit('CONNECTION_MSG', { text: 'GOV-CORE OS: Admin mode booted successfully.' });
-            }, 3000);
-        }
+           }
+        }, 3000);
         return;
     }
 
@@ -1410,146 +1402,6 @@ const App: React.FC = () => {
     return () => clearInterval(interval);
   }, [offlineStandbyActive, offlineScheduledTime]);
 
-  if (offlineStandbyActive && offlineScheduledTime) {
-      return (
-          <div className="fixed inset-0 z-[10000] bg-[#050508] flex flex-col items-center justify-center p-6 text-center select-none font-mono">
-              <div className="scanlines z-0" />
-              <div className="absolute inset-0 opacity-10 pointer-events-none z-0">
-                  <div className="absolute top-0 left-0 w-full h-full bg-[radial-gradient(#ffffff_1px,transparent_1px)] [background-size:24px_24px]" />
-              </div>
-              <motion.div
-                initial={{ scale: 0.95, y: 15 }}
-                animate={{ scale: 1, y: 0 }}
-                className="w-full max-w-md glass-panel p-10 rounded-[32px] border-red-900/30 bg-black/40 relative z-10 flex flex-col items-center shadow-[0_32px_64px_-12px_rgba(0,0,0,0.9)]"
-              >
-                  <div className="w-16 h-16 bg-red-950/40 rounded-[24px] flex items-center justify-center mb-6 border border-red-500/30 animate-pulse">
-                      <Clock className="text-red-500" size={32} />
-                  </div>
-
-                  <h2 className="text-xl font-black tracking-[0.2em] text-white uppercase mb-2">OFFLINE_STANDBY</h2>
-                  <p className="text-[10px] text-red-500/80 uppercase tracking-[0.1em] font-bold mb-8 max-w-xs leading-relaxed">
-                      オフライン開催待機中。指定時刻になると自動的に開始します。
-                  </p>
-
-                  <div className="p-4 rounded-xl bg-red-950/20 border border-red-900/30 text-center w-full mb-8">
-                      <span className="text-[10px] uppercase text-white/40 tracking-widest block mb-1">開始予定時刻</span>
-                      <span className="text-2xl font-mono font-bold text-red-500">
-                          {offlineScheduledTime.hour}時{offlineScheduledTime.minute}分{offlineScheduledTime.second}秒
-                      </span>
-                  </div>
-
-                  {/* Cancel / Power button triggers password check before resetting */}
-                  <button
-                    onClick={() => {
-                        playSynthSound('open');
-                        setShowPowerPrompt(true);
-                    }}
-                    className="p-4 bg-red-950/40 border border-red-500/30 hover:bg-red-950/70 rounded-full text-red-500 transition-all z-50 flex items-center justify-center"
-                    title="オフライン予約キャンセル"
-                  >
-                       <Power size={24} />
-                  </button>
-                  <span className="text-[9px] text-white/30 uppercase mt-2">
-                      管理パネル起動（予約自動取消）
-                  </span>
-              </motion.div>
-
-              {/* Reuse Admin Password Prompt modal to unlock and cancel reservation */}
-              <AnimatePresence>
-                {showPowerPrompt && (
-                  <motion.div
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    exit={{ opacity: 0 }}
-                    className="fixed inset-0 z-[10100] bg-black/85 backdrop-blur-md flex items-center justify-center p-6"
-                  >
-                    <motion.div
-                      initial={{ scale: 0.92, opacity: 0 }}
-                      animate={{ scale: 1, opacity: 1 }}
-                      className="w-full max-w-sm glass-panel p-8 text-center border-red-950/20 bg-black/40"
-                    >
-                      <Cpu className="mx-auto mb-6 text-red-500/60 animate-pulse" size={32} />
-                      <h2 className="text-lg font-bold mb-2 tracking-widest uppercase text-white">予約の取り消し</h2>
-                      <p className="text-[10px] text-white/40 mb-8 uppercase tracking-tighter">管理者パスコードを入力してください</p>
-
-                      <div className="relative mb-2">
-                        <input
-                            type="password"
-                            autoFocus
-                            placeholder="ADMIN CODE"
-                            className={`w-full bg-black/50 border rounded-xl px-4 py-4 text-center outline-none focus:border-red-900 transition-all text-xl tracking-[0.5em] text-red-500 placeholder-red-900/30 ${powerError ? 'border-red-500' : 'border-white/10'}`}
-                            value={powerInput}
-                            onChange={(e) => {
-                                setPowerInput(e.target.value);
-                                if (powerError) setPowerError(false);
-                            }}
-                            onKeyDown={(e) => {
-                                if (e.key === 'Enter') {
-                                    const adminPass = localStorage.getItem('pass_admin') || 'ADMIN_DASH';
-                                    if (powerInput === adminPass) {
-                                        playSynthSound('success');
-                                        setShowPowerPrompt(false);
-                                        setPowerInput('');
-                                        setPowerError(false);
-                                        setOfflineStandbyActive(false);
-                                        setOfflineScheduledTime(null);
-                                        setIsForcedOfflineMode(false);
-                                        setShowSetup(true);
-                                    } else {
-                                        setPowerError(true);
-                                    }
-                                }
-                            }}
-                        />
-                      </div>
-
-                      <div className="h-4 mb-4">
-                          {powerError && (
-                              <span className="text-[10px] text-red-500 font-bold uppercase tracking-widest animate-pulse">
-                                  認証コード不一致
-                              </span>
-                          )}
-                      </div>
-
-                      <div className="flex gap-4">
-                        <button
-                            onClick={() => {
-                                setShowPowerPrompt(false);
-                                setPowerInput('');
-                                setPowerError(false);
-                            }}
-                            className="flex-1 py-3 rounded-xl border border-white/5 hover:bg-white/5 transition-all text-xs uppercase tracking-widest"
-                        >
-                          戻る
-                        </button>
-                        <button
-                            onClick={() => {
-                                const adminPass = localStorage.getItem('pass_admin') || 'ADMIN_DASH';
-                                if (powerInput === adminPass) {
-                                    playSynthSound('success');
-                                    setShowPowerPrompt(false);
-                                    setPowerInput('');
-                                    setPowerError(false);
-                                    setOfflineStandbyActive(false);
-                                    setOfflineScheduledTime(null);
-                                    setIsForcedOfflineMode(false);
-                                    setShowSetup(true);
-                                } else {
-                                    setPowerError(true);
-                                }
-                            }}
-                            className="flex-1 py-3 rounded-xl bg-red-950/40 hover:bg-red-950/60 text-red-400 border border-red-900/40 font-bold text-xs uppercase tracking-widest transition-all"
-                        >
-                          キャンセル確定
-                        </button>
-                      </div>
-                    </motion.div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-          </div>
-      );
-  }
 
   if (showSetup) {
       return <Setup
@@ -1614,11 +1466,49 @@ const App: React.FC = () => {
     }
   };
 
-  const showBars = !videoPlaying && puzzleState !== 'idle' && puzzleState !== 'boot_loading';
+  const showBars = !videoPlaying && !offlineStandbyActive && puzzleState !== 'idle' && puzzleState !== 'boot_loading';
 
   return (
     <OSContext.Provider value={osContextValue}>
     <div className={`relative h-screen w-screen bg-[#050508] text-[#eaeaea] overflow-hidden ${isShaking ? 'animate-shake' : ''} ${isFrozen ? 'pointer-events-none select-none' : ''}`}>
+
+      {/* Offline Standby Overlay Screen (rendered at high-z index, but does not block footer power button) */}
+      <AnimatePresence>
+          {offlineStandbyActive && offlineScheduledTime && (
+               <motion.div
+                 initial={{ opacity: 0 }}
+                 animate={{ opacity: 1 }}
+                 exit={{ opacity: 0 }}
+                 className="fixed inset-0 z-[9400] bg-[#050508] flex flex-col items-center justify-center p-6 text-center select-none font-mono"
+               >
+                   <div className="scanlines z-0" />
+                   <div className="absolute inset-0 opacity-10 pointer-events-none z-0">
+                       <div className="absolute top-0 left-0 w-full h-full bg-[radial-gradient(#ffffff_1px,transparent_1px)] [background-size:24px_24px]" />
+                   </div>
+                   <motion.div
+                     initial={{ scale: 0.95, y: 15 }}
+                     animate={{ scale: 1, y: 0 }}
+                     className="w-full max-w-md glass-panel p-10 rounded-[32px] border-red-900/30 bg-black/40 relative z-10 flex flex-col items-center shadow-[0_32px_64px_-12px_rgba(0,0,0,0.9)]"
+                   >
+                       <div className="w-16 h-16 bg-red-950/40 rounded-[24px] flex items-center justify-center mb-6 border border-red-500/30 animate-pulse">
+                           <Clock className="text-red-500" size={32} />
+                       </div>
+
+                       <h2 className="text-xl font-black tracking-[0.2em] text-white uppercase mb-2">OFFLINE_STANDBY</h2>
+                       <p className="text-[10px] text-red-500/80 uppercase tracking-[0.1em] font-bold mb-8 max-w-xs leading-relaxed">
+                           オフライン開催待機中。指定時刻になると自動的に開始します。
+                       </p>
+
+                       <div className="p-4 rounded-xl bg-red-950/20 border border-red-900/30 text-center w-full mb-8">
+                           <span className="text-[10px] uppercase text-white/40 tracking-widest block mb-1">開始予定時刻</span>
+                           <span className="text-2xl font-mono font-bold text-red-500">
+                               {offlineScheduledTime.hour}時{offlineScheduledTime.minute}分{offlineScheduledTime.second}秒
+                           </span>
+                       </div>
+                   </motion.div>
+               </motion.div>
+          )}
+      </AnimatePresence>
 
       {/* Screen Complete Blackout Phase once countdown timerSeconds reaches exactly 0 and video finished */}
       <AnimatePresence>
