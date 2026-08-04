@@ -588,9 +588,12 @@ function joinVoice(channelId) {
 
     audioPlayer = createAudioPlayer();
     audioPlayer.on(AudioPlayerStatus.Idle, () => {
-        isTtsPlaying = false;
-        currentPlayingTts = null;
-        processTtsQueue();
+        console.log(`Discord TTS finished playing: "${currentPlayingTts}". Enforcing 2.5-second delay before processing next.`);
+        setTimeout(() => {
+            isTtsPlaying = false;
+            currentPlayingTts = null;
+            processTtsQueue();
+        }, 2500); // Strict comfortable gap of 2.5 seconds between announcements
     });
 
     voiceConnection.subscribe(audioPlayer);
