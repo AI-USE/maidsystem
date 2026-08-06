@@ -412,6 +412,9 @@ const App: React.FC = () => {
 
   // Security Camera Active Channel (1 or 2)
   const [activeCamChannel, setActiveCamChannel] = useState<number>(1);
+  const [camCurrentTime, setCamCurrentTime] = useState<number>(0);
+  const [camDuration, setCamDuration] = useState<number>(0);
+  const realGameStartTimeRef = useRef<number>(Date.now());
 
   // Maid controls state
   const [isEventUnlocked, setIsEventUnlocked] = useState(false);
@@ -458,6 +461,30 @@ const App: React.FC = () => {
   const deliveringTtsIntervalRef = useRef<any>(null);
   const typedBufferRef = useRef<string>('');
   const audioRefs = useRef<{ [key: string]: HTMLAudioElement }>({});
+
+  const formatDisplayTime = (d: Date) => {
+    const pad = (n: number) => String(n).padStart(2, '0');
+    const datePart = `${d.getFullYear()}/${pad(d.getMonth() + 1)}/${pad(d.getDate())}`;
+    const timePart = `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+    return `${datePart} ${timePart}`;
+  };
+
+  const getCameraDisplayTime = () => {
+    if (!camDuration) {
+       return formatDisplayTime(new Date(realGameStartTimeRef.current));
+    }
+    const offsetFromEnd = camDuration - camCurrentTime;
+    if (offsetFromEnd <= 30) {
+       const displayDate = new Date();
+       displayDate.setHours(23, 52, 40, 0);
+       displayDate.setSeconds(displayDate.getSeconds() - Math.floor(offsetFromEnd));
+       return formatDisplayTime(displayDate);
+    } else {
+       const realStart = realGameStartTimeRef.current;
+       const targetMs = realStart - 90000 - (Math.floor(offsetFromEnd) - 30) * 1000;
+       return formatDisplayTime(new Date(targetMs));
+    }
+  };
 
   const { isConnected, isPaired, lastCommand, emit } = useRemoteControl(isForcedOfflineMode ? null : masterUrl);
 
@@ -579,6 +606,9 @@ const App: React.FC = () => {
     setVideoProgress(0);
     setVideoType(type);
     setVideoPlaying(true);
+    if (type === 'start') {
+        realGameStartTimeRef.current = Date.now();
+    }
   }, []);
 
   const resetPuzzleStateAndInputs = useCallback(() => {
@@ -2150,6 +2180,8 @@ const App: React.FC = () => {
                                                       muted
                                                       playsInline
                                                       className="w-full h-full object-cover"
+                                                      onTimeUpdate={(e) => setCamCurrentTime(e.currentTarget.currentTime)}
+                                                      onLoadedMetadata={(e) => setCamDuration(e.currentTarget.duration)}
                                                     />
                                                ) : (
                                                     <video
@@ -2161,10 +2193,16 @@ const App: React.FC = () => {
                                                       muted
                                                       playsInline
                                                       className="w-full h-full object-cover"
+                                                      onTimeUpdate={(e) => setCamCurrentTime(e.currentTarget.currentTime)}
+                                                      onLoadedMetadata={(e) => setCamDuration(e.currentTarget.duration)}
                                                     />
                                                )}
                                                <div className="absolute top-4 left-4 px-3 py-1 bg-black/80 rounded-md font-mono text-xs text-white/80">
                                                     CAM_0{activeCamChannel} - LIVE BROADCAST
+                                               </div>
+                                               <div className="absolute top-4 right-4 px-3 py-1 bg-black/80 rounded-md font-mono text-xs text-red-500 font-bold animate-pulse flex items-center gap-1.5 border border-red-500/20">
+                                                    <span className="w-1.5 h-1.5 rounded-full bg-red-600" />
+                                                    {getCameraDisplayTime()}
                                                </div>
                                           </div>
                                       </div>
