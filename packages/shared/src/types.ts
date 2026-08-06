@@ -23,6 +23,7 @@ export type CommandType =
   | 'SET_FREEZE'
   | 'SHOW_ERROR'
   | 'INJECT_LOG'
+  | 'PUZZLE_PREPARE'
   | 'PUZZLE_START'
   | 'PUZZLE_STOP'
   | 'PUZZLE_RESTART'

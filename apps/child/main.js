@@ -102,10 +102,12 @@ ipcMain.on('VERIFY_PASSWORD', (event, password) => {
 
   if (password === exitPass) {
     isAllowExit = true;
-    app.quit();
+    app.exit(0);
   } else if (password === eventPass) {
     event.reply('PASSWORD_ACTION', 'TRIGGER_EVENT');
   } else if (password === adminPass) {
+    event.reply('PASSWORD_ACTION', 'BOOT_ADMIN_DESKTOP');
+  } else if (password === setupPass) {
     event.reply('PASSWORD_ACTION', 'SHOW_SETUP');
   } else {
     event.reply('PASSWORD_RESULT', false);
@@ -120,6 +122,11 @@ ipcMain.on('VERIFY_SETUP_PASSWORD', (event, password) => {
   } else {
     event.reply('PASSWORD_RESULT', false);
   }
+});
+
+ipcMain.on('EXIT_APP', () => {
+  isAllowExit = true;
+  app.exit(0);
 });
 
 ipcMain.on('SET_KIOSK', (event, enabled) => {

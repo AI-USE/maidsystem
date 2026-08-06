@@ -9,6 +9,75 @@ let mainWindow;
 const devices = new Map(); // Indexed by persistent deviceId
 const socketMap = new Map(); // socket.id -> deviceId
 const activeDeliveries = new Map(); // itemCode -> { deviceId, roomCode, itemCode, itemName, intervalId, socketId }
+let deliveriesLoopInterval = null;
+
+const fs = require('fs');
+const devicesFilePath = path.join(app ? app.getPath('userData') : __dirname, 'mados_devices.json');
+
+function loadDevices() {
+  try {
+    if (fs.existsSync(devicesFilePath)) {
+      const data = JSON.parse(fs.readFileSync(devicesFilePath, 'utf8'));
+      for (const [key, value] of Object.entries(data)) {
+         devices.set(key, {
+            id: value.id,
+            name: value.name,
+            online: false,
+            socketId: null,
+            activeApp: 'IDLE',
+            puzzleState: 'idle',
+            isPaused: false
+         });
+      }
+      console.log("Loaded persisted devices list:", devices.size);
+    }
+  } catch (e) {
+    console.error("Failed to load persisted devices:", e);
+  }
+}
+
+function saveDevices() {
+  try {
+    const data = {};
+    for (const [key, value] of devices.entries()) {
+       data[key] = { id: value.id, name: value.name };
+    }
+    fs.writeFileSync(devicesFilePath, JSON.stringify(data, null, 2), 'utf8');
+    console.log("Saved persisted devices list:", devices.size);
+  } catch (e) {
+    console.error("Failed to save devices:", e);
+  }
+}
+
+function triggerDeliveriesLoop() {
+  if (deliveriesLoopInterval) {
+    clearInterval(deliveriesLoopInterval);
+    deliveriesLoopInterval = null;
+  }
+
+  if (activeDeliveries.size === 0) {
+    return;
+  }
+
+  const buildAnnouncementText = () => {
+    const phrases = [];
+    for (const d of activeDeliveries.values()) {
+        const dev = devices.get(d.deviceId);
+        const devName = dev ? (dev.name || `端末`) : '子機';
+        phrases.push(`部屋名${devName}、アイテム${d.itemName}、配達要請。`);
+    }
+    return phrases.join(' ');
+  };
+
+  const text = buildAnnouncementText();
+  playDiscordTts(text);
+
+  deliveriesLoopInterval = setInterval(() => {
+    if (!emergencyActive && activeDeliveries.size > 0) {
+      playDiscordTts(buildAnnouncementText());
+    }
+  }, 8000);
+}
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -98,6 +167,8 @@ io.on('connection', (socket) => {
           name: data.name || `DEVICE_${sid.substring(0, 4)}`,
           socket: socket
       });
+      // Force child to clear 'isPaired' and show "Waiting for Approval" screen until master operator approves!
+      socket.emit('PAIRING_RESULT', { success: false });
       updatePendingApprovals();
   });
 
@@ -141,6 +212,10 @@ io.on('connection', (socket) => {
         });
     }
 
+    if (data.text === 'COMMENTARY_VIDEO_FINISHED') {
+        playDiscordTts("解説終了");
+    }
+
     if (data.text && data.text.includes('OVERRIDE_SUBMITTED:')) {
         try {
             const passMatch = data.text.match(/Submitted Passcode proposal:\s*"([^"]+)"/);
@@ -165,26 +240,18 @@ io.on('connection', (socket) => {
             const itemName = nameMatch ? nameMatch[1] : '';
 
             if (activeDeliveries.has(itemCode)) {
-                clearInterval(activeDeliveries.get(itemCode).intervalId);
+                activeDeliveries.delete(itemCode);
             }
-
-            const devName = (pDeviceId && devices.has(pDeviceId)) ? (devices.get(pDeviceId).name || `端末_${pDeviceId.substring(0,6)}`) : '子機';
-            const announceText = `部屋名${devName}、アイテム${itemName}、配達要請。`;
-            playDiscordTts(announceText);
-
-            const intervalId = setInterval(() => {
-                console.log(`Looping delivery request for item: ${itemCode}`);
-                playDiscordTts(announceText);
-            }, 8000);
 
             activeDeliveries.set(itemCode, {
                 deviceId: pDeviceId,
                 roomCode,
                 itemCode,
                 itemName,
-                intervalId,
                 socketId: sid
             });
+
+            triggerDeliveriesLoop();
 
             if (mainWindow) {
                 mainWindow.webContents.send('MAID_DELIVERY_ACTIVE', {
@@ -231,8 +298,11 @@ ipcMain.on('APPROVE_PAIRING', (event, sid) => {
             socketId: sid,
             name: pending.name,
             online: true,
-            activeApp: 'IDLE'
+            activeApp: 'IDLE',
+            puzzleState: 'idle',
+            isPaused: false
         });
+        saveDevices(); // Save newly approved devices!
         pending.socket.emit('PAIRING_RESULT', { success: true });
         pendingApprovals.delete(sid);
         updateDeviceList();
@@ -252,6 +322,7 @@ ipcMain.on('REJECT_PAIRING', (event, deviceId) => {
 ipcMain.on('REMOVE_DEVICE', (event, deviceId) => {
     if (devices.has(deviceId)) {
         devices.delete(deviceId);
+        saveDevices(); // Save updated devices list!
         updateDeviceList();
     }
 });
@@ -260,7 +331,6 @@ ipcMain.on('CLEAR_MAID_DELIVERY', (event, { itemCode }) => {
     console.log(`CLEAR_MAID_DELIVERY received for item: ${itemCode}`);
     if (activeDeliveries.has(itemCode)) {
         const delivery = activeDeliveries.get(itemCode);
-        clearInterval(delivery.intervalId);
 
         // Notify Discord Voice bot
         playDiscordTts(`物品${delivery.itemName}、配備完了しました。`);
@@ -272,6 +342,7 @@ ipcMain.on('CLEAR_MAID_DELIVERY', (event, { itemCode }) => {
         });
 
         activeDeliveries.delete(itemCode);
+        triggerDeliveriesLoop();
 
         // Notify master renderer to update lists
         if (mainWindow) {
@@ -281,10 +352,11 @@ ipcMain.on('CLEAR_MAID_DELIVERY', (event, { itemCode }) => {
 });
 
 ipcMain.on('CLEAR_ALL_MAID_DELIVERIES', (event) => {
-    for (const [itemCode, delivery] of activeDeliveries.entries()) {
-        clearInterval(delivery.intervalId);
-    }
     activeDeliveries.clear();
+    if (deliveriesLoopInterval) {
+        clearInterval(deliveriesLoopInterval);
+        deliveriesLoopInterval = null;
+    }
     if (mainWindow) {
         mainWindow.webContents.send('MAID_DELIVERY_RESET');
     }
@@ -293,15 +365,26 @@ ipcMain.on('CLEAR_ALL_MAID_DELIVERIES', (event) => {
 ipcMain.on('SEND_REMOTE_COMMAND', (event, { targetId, command }) => {
   if (command.type === 'PUZZLE_STOP' || command.type === 'PUZZLE_RESTART' || command.type === 'PUZZLE_START') {
     // Clean all deliveries
-    for (const [itemCode, delivery] of activeDeliveries.entries()) {
-        clearInterval(delivery.intervalId);
-    }
     activeDeliveries.clear();
+    if (deliveriesLoopInterval) {
+        clearInterval(deliveriesLoopInterval);
+        deliveriesLoopInterval = null;
+    }
 
     // Clean post game loops
     if (postGameInterval) {
         clearInterval(postGameInterval);
         postGameInterval = null;
+    }
+
+    // Clear TTS Queue
+    ttsQueue = [];
+    isTtsPlaying = false;
+    currentPlayingTts = null;
+    if (audioPlayer) {
+       try {
+           audioPlayer.stop();
+       } catch (err) {}
     }
 
     // Reset all submitted passcodes
@@ -315,14 +398,14 @@ ipcMain.on('SEND_REMOTE_COMMAND', (event, { targetId, command }) => {
     }
   }
 
-  if (command.type === 'PUZZLE_START' || command.type === 'PUZZLE_RESTART') {
+  if (command.type === 'PUZZLE_START' || command.type === 'PUZZLE_RESTART' || command.type === 'PUZZLE_STOP') {
       if (standbyLoopInterval) {
           clearInterval(standbyLoopInterval);
           standbyLoopInterval = null;
       }
   }
 
-  if (command.type === 'PUZZLE_STOP') {
+  if (command.type === 'PUZZLE_PREPARE') {
       if (standbyLoopInterval) clearInterval(standbyLoopInterval);
       playDiscordTts("謎解きの公演準備完了");
       standbyLoopInterval = setInterval(() => {
@@ -378,7 +461,10 @@ function startServer(port) {
 
 startServer(3030);
 
-app.whenReady().then(createWindow);
+app.whenReady().then(() => {
+  loadDevices();
+  createWindow();
+});
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
@@ -391,7 +477,8 @@ const { Client, GatewayIntentBits } = require('discord.js');
 const {
   joinVoiceChannel,
   createAudioPlayer,
-  createAudioResource
+  createAudioResource,
+  AudioPlayerStatus
 } = require('@discordjs/voice');
 
 let discordClient = null;
@@ -405,6 +492,10 @@ let discordConfig = {
 let emergencyActive = false;
 let emergencyInterval = null;
 let emergencyText = '';
+
+let ttsQueue = [];
+let isTtsPlaying = false;
+let currentPlayingTts = null;
 
 // Built-in announcements for escape room events
 const defaultTriggers = {
@@ -496,6 +587,15 @@ function joinVoice(channelId) {
     });
 
     audioPlayer = createAudioPlayer();
+    audioPlayer.on(AudioPlayerStatus.Idle, () => {
+        console.log(`Discord TTS finished playing: "${currentPlayingTts}". Enforcing 2.5-second delay before processing next.`);
+        setTimeout(() => {
+            isTtsPlaying = false;
+            currentPlayingTts = null;
+            processTtsQueue();
+        }, 2500); // Strict comfortable gap of 2.5 seconds between announcements
+    });
+
     voiceConnection.subscribe(audioPlayer);
     console.log(`Joined Discord Voice Channel: "${channel.name}"`);
   } catch (err) {
@@ -504,11 +604,35 @@ function joinVoice(channelId) {
 }
 
 // Play TTS stream directly into the Discord Voice connection
-function playDiscordTts(text) {
+function playDiscordTts(text, priority = false) {
   if (!audioPlayer || !text) {
     console.log('Discord audio player is not connected, skipped playing TTS.');
     return;
   }
+
+  // Prevent duplicate announcements from flooding the queue
+  if (ttsQueue.includes(text) || (isTtsPlaying && currentPlayingTts === text)) {
+    console.log(`TTS text "${text}" is already in queue or playing, skipping duplicate.`);
+    return;
+  }
+
+  if (priority) {
+    ttsQueue.unshift(text);
+  } else {
+    ttsQueue.push(text);
+  }
+
+  processTtsQueue();
+}
+
+function processTtsQueue() {
+  if (!audioPlayer || isTtsPlaying || ttsQueue.length === 0) {
+    return;
+  }
+
+  isTtsPlaying = true;
+  const text = ttsQueue.shift();
+  currentPlayingTts = text;
 
   try {
     const ttsUrl = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(text)}&tl=ja&client=tw-ob`;
@@ -517,6 +641,9 @@ function playDiscordTts(text) {
     console.log(`Dispatched Voice TTS to channel: "${text}"`);
   } catch (err) {
     console.error('Failed to play Discord TTS stream:', err);
+    isTtsPlaying = false;
+    currentPlayingTts = null;
+    setTimeout(processTtsQueue, 500);
   }
 }
 

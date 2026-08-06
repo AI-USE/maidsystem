@@ -6,20 +6,66 @@ interface SetupProps {
   onComplete: () => void;
 }
 
-export const Setup: React.FC<SetupProps> = ({ onComplete }) => {
+interface OfflineSetupProps extends SetupProps {
+  onStartOffline: (targetTime: { hour: string; minute: string; second: string }) => void;
+  currentTime?: Date;
+}
+
+export const Setup: React.FC<OfflineSetupProps> = ({ onComplete, onStartOffline, currentTime }) => {
   const [step, setStep] = useState(1);
-  const [deviceName, setDeviceName] = useState(localStorage.getItem('deviceName') || '');
-  const [ip, setIp] = useState(localStorage.getItem('masterUrl')?.replace('http://', '') || '');
+  const [isOfflineModeChecked, setIsOfflineModeChecked] = useState(false);
+  const [deviceName, setDeviceName] = useState(() => {
+      const name = localStorage.getItem('deviceName');
+      if (!name || name === 'null' || name === 'undefined') return '';
+      return name;
+  });
+  const [ip, setIp] = useState(() => {
+      const saved = localStorage.getItem('masterUrl');
+      if (!saved || saved === 'null' || saved === 'undefined') return '';
+      return saved.replace('http://', '');
+  });
   const [kioskEnabled, setKioskEnabled] = useState(true);
   const [testStatus, setTestStatus] = useState<'idle' | 'testing' | 'success' | 'error'>('idle');
   const [showPasswords, setShowPasswords] = useState(false);
-  const [passwords, setPasswords] = useState({
-      exit: localStorage.getItem('pass_exit') || 'MADREST104',
-      event: localStorage.getItem('pass_event') || 'EVT_TRIGGER_99',
-      admin: localStorage.getItem('pass_admin') || 'ADMIN_DASH',
-      setup: localStorage.getItem('pass_setup') || 'ADMIN_SETUP'
+  const [passwords, setPasswords] = useState(() => {
+      const exit = localStorage.getItem('pass_exit');
+      const event = localStorage.getItem('pass_event');
+      const admin = localStorage.getItem('pass_admin');
+      const setup = localStorage.getItem('pass_setup');
+      return {
+          exit: !exit || exit === 'null' || exit === 'undefined' ? 'MADREST104' : exit,
+          event: !event || event === 'null' || event === 'undefined' ? 'EVT_TRIGGER_99' : event,
+          admin: !admin || admin === 'null' || admin === 'undefined' ? 'ADMIN_DASH' : admin,
+          setup: !setup || setup === 'null' || setup === 'undefined' ? 'ADMIN_SETUP' : setup
+      };
   });
-  const [bgmVolume, setBgmVolume] = useState<number>(parseInt(localStorage.getItem('bgmVolume') || '50'));
+  const [bgmVolume, setBgmVolume] = useState<number>(() => {
+      const saved = localStorage.getItem('bgmVolume');
+      if (!saved || saved === 'null' || saved === 'undefined') return 50;
+      const parsed = parseInt(saved);
+      return isNaN(parsed) ? 50 : parsed;
+  });
+
+  // Offline Mode Patterns Configuration states
+  const [offlineTargetTime, setOfflineTargetTime] = useState(() => {
+      const activeDate = currentTime || new Date();
+      return {
+          hour: String(activeDate.getHours()).padStart(2, '0'),
+          minute: String(activeDate.getMinutes()).padStart(2, '0'),
+          second: String(activeDate.getSeconds()).padStart(2, '0')
+      };
+  });
+
+  useEffect(() => {
+    if (step === 1) {
+      const activeDate = new Date();
+      setOfflineTargetTime({
+          hour: String(activeDate.getHours()).padStart(2, '0'),
+          minute: String(activeDate.getMinutes()).padStart(2, '0'),
+          second: String(activeDate.getSeconds()).padStart(2, '0')
+      });
+    }
+  }, [step]);
 
   const testConnection = async () => {
     setTestStatus('testing');
@@ -81,7 +127,12 @@ export const Setup: React.FC<SetupProps> = ({ onComplete }) => {
                   kiosk: kioskEnabled
               });
           }
-          onComplete();
+
+          if (isOfflineModeChecked) {
+              onStartOffline(offlineTargetTime);
+          } else {
+              onComplete();
+          }
       } else {
           setStep(step + 1);
       }
@@ -156,10 +207,60 @@ export const Setup: React.FC<SetupProps> = ({ onComplete }) => {
                 <button
                     onClick={testConnection}
                     disabled={!ip || testStatus === 'testing'}
-                    className="w-full py-3 mb-8 rounded-xl bg-white/5 border border-white/10 text-[10px] font-bold uppercase tracking-widest hover:bg-white/10 transition-all disabled:opacity-50"
+                    className="w-full py-3 mb-4 rounded-xl bg-white/5 border border-white/10 text-[10px] font-bold uppercase tracking-widest hover:bg-white/10 transition-all disabled:opacity-50"
                 >
                     接続テストを実行
                 </button>
+
+                <div className="pt-4 border-t border-white/5 space-y-4">
+                    <div className="flex items-center justify-between p-3 bg-white/5 rounded-xl border border-white/5">
+                        <div className="text-left">
+                            <div className="text-xs font-bold text-white/80">オフラインモードで起動</div>
+                            <div className="text-[9px] text-white/40 uppercase mt-0.5">時間予約オフライン開催</div>
+                        </div>
+                        <input
+                            type="checkbox"
+                            checked={isOfflineModeChecked}
+                            onChange={(e) => setIsOfflineModeChecked(e.target.checked)}
+                            className="w-5 h-5 accent-red-500 cursor-pointer"
+                        />
+                    </div>
+
+                    {isOfflineModeChecked && (
+                        <div className="space-y-2">
+                            <label className="text-[9px] uppercase tracking-widest text-red-400 font-bold block text-left ml-2">⏳ 開始予約時刻 (JST)</label>
+                            <div className="grid grid-cols-3 gap-2">
+                                <select
+                                    value={offlineTargetTime.hour}
+                                    onChange={(e) => setOfflineTargetTime({ ...offlineTargetTime, hour: e.target.value })}
+                                    className="bg-[#151518] border border-white/10 rounded-xl px-2 py-3 text-sm font-mono text-white"
+                                >
+                                    {Array.from({ length: 24 }).map((_, i) => (
+                                        <option key={i} value={String(i).padStart(2, '0')}>{String(i).padStart(2, '0')}時</option>
+                                    ))}
+                                </select>
+                                <select
+                                    value={offlineTargetTime.minute}
+                                    onChange={(e) => setOfflineTargetTime({ ...offlineTargetTime, minute: e.target.value })}
+                                    className="bg-[#151518] border border-white/10 rounded-xl px-2 py-3 text-sm font-mono text-white"
+                                >
+                                    {Array.from({ length: 60 }).map((_, i) => (
+                                        <option key={i} value={String(i).padStart(2, '0')}>{String(i).padStart(2, '0')}分</option>
+                                    ))}
+                                </select>
+                                <select
+                                    value={offlineTargetTime.second}
+                                    onChange={(e) => setOfflineTargetTime({ ...offlineTargetTime, second: e.target.value })}
+                                    className="bg-[#151518] border border-white/10 rounded-xl px-2 py-3 text-sm font-mono text-white"
+                                >
+                                    {Array.from({ length: 60 }).map((_, i) => (
+                                        <option key={i} value={String(i).padStart(2, '0')}>{String(i).padStart(2, '0')}秒</option>
+                                    ))}
+                                </select>
+                            </div>
+                        </div>
+                    )}
+                </div>
             </div>
         )}
 
@@ -215,20 +316,90 @@ export const Setup: React.FC<SetupProps> = ({ onComplete }) => {
                         />
                     </div>
 
-                    <div className="pt-4 border-t border-white/5">
-                        <div className="flex justify-between items-center mb-2 px-2">
-                            <label className="text-[10px] uppercase tracking-widest text-white/40">BGM音量設定</label>
-                            <span className="text-xs text-white/80 font-mono font-bold">{bgmVolume}%</span>
+                    <div className="pt-4 border-t border-white/5 space-y-4">
+                        <div>
+                            <div className="flex justify-between items-center mb-2 px-2">
+                                <label className="text-[10px] uppercase tracking-widest text-white/40">BGM音量設定</label>
+                                <span className="text-xs text-white/80 font-mono font-bold">{bgmVolume}%</span>
+                            </div>
+                            <input
+                                type="range" min="0" max="100" step="5"
+                                className="w-full accent-white opacity-60 hover:opacity-100 transition-opacity"
+                                value={bgmVolume}
+                                onChange={(e) => setBgmVolume(parseInt(e.target.value))}
+                            />
+                            <p className="text-[9px] text-white/30 uppercase mt-2 leading-relaxed text-left px-2 font-mono">
+                                ※ 【推奨】音声はヘッドホン出力から原則として流れるよう構成されています。
+                            </p>
                         </div>
-                        <input
-                            type="range" min="0" max="100" step="5"
-                            className="w-full accent-white opacity-60 hover:opacity-100 transition-opacity"
-                            value={bgmVolume}
-                            onChange={(e) => setBgmVolume(parseInt(e.target.value))}
-                        />
-                        <p className="text-[9px] text-white/30 uppercase mt-2 leading-relaxed text-left px-2 font-mono">
-                            ※ 【推奨】音声はヘッドホン出力から原則として流れるよう構成されています。
-                        </p>
+
+                        <div className="p-4 bg-white/5 border border-white/10 rounded-2xl">
+                            <span className="text-[10px] uppercase tracking-widest text-white/40 block text-left mb-2 ml-1">🔊 オーディオ出力診断テスト</span>
+                            <button
+                                type="button"
+                                onClick={async () => {
+                                    try {
+                                        // Request temporary mic permissions to retrieve output device labels
+                                        try {
+                                            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                                            stream.getTracks().forEach(track => track.stop());
+                                        } catch (e) {}
+
+                                        const devices = await navigator.mediaDevices.enumerateDevices();
+                                        const audioOutputs = devices.filter(d => d.kind === 'audiooutput');
+
+                                        const speaker = audioOutputs.find(d =>
+                                            d.label.toLowerCase().includes('speakers') ||
+                                            d.label.toLowerCase().includes('speaker') ||
+                                            d.label.toLowerCase().includes('built-in') ||
+                                            d.label.toLowerCase().includes('internal') ||
+                                            d.label.toLowerCase().includes('スピーカー')
+                                        );
+
+                                        const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+                                        const dest = ctx.createMediaStreamDestination();
+
+                                        const audio = new Audio();
+                                        audio.srcObject = dest.stream;
+
+                                        let didBindSink = false;
+                                        if (speaker && typeof (audio as any).setSinkId === 'function') {
+                                            try {
+                                                await (audio as any).setSinkId(speaker.deviceId);
+                                                console.log("Audio Diagnostic Speaker output bound to:", speaker.label);
+                                                didBindSink = true;
+                                            } catch (sinkErr) {
+                                                console.warn("Failsafe: Setup Speaker Test setSinkId failed, playing test chime through default output destination.", sinkErr);
+                                            }
+                                        }
+
+                                        audio.play().catch(e => console.log("Test stream play catch:", e));
+
+                                        // Play dual sine wave diagnostic chime
+                                        [523.25, 659.25].forEach((freq, idx) => {
+                                            const osc = ctx.createOscillator();
+                                            const gain = ctx.createGain();
+                                            osc.type = 'sine';
+                                            osc.frequency.setValueAtTime(freq, ctx.currentTime);
+                                            gain.gain.setValueAtTime(1.0, ctx.currentTime); // MAX VOLUME
+                                            gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 1.2);
+                                            osc.connect(gain);
+                                            gain.connect(dest);
+                                            osc.start();
+                                            osc.stop(ctx.currentTime + 1.2);
+                                        });
+
+                                        alert(`スピーカー出力テスト音を最大音量で再生しました。\n検出デバイス: ${speaker ? speaker.label : 'デフォルトスピーカー'}${didBindSink ? '' : ' (デフォルト出力先にフォールバック再生)'}`);
+                                    } catch (err: any) {
+                                        console.error(err);
+                                        alert("スピーカーテストに失敗しました: " + err.message);
+                                    }
+                                }}
+                                className="w-full py-2.5 bg-red-950/40 hover:bg-red-950/70 text-red-400 hover:text-white border border-red-900/40 rounded-xl text-xs font-bold uppercase tracking-widest transition-all cursor-pointer"
+                            >
+                                スピーカー出力テスト
+                            </button>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -258,9 +429,9 @@ export const Setup: React.FC<SetupProps> = ({ onComplete }) => {
 
         <button
             onClick={saveAndNext}
-            className="w-full py-4 rounded-2xl bg-white text-black font-bold text-xs uppercase tracking-[0.2em] hover:bg-white/90 transition-all flex items-center justify-center gap-2 mt-4"
+            className="w-full py-4 rounded-2xl bg-white text-black font-bold text-xs uppercase tracking-[0.2em] hover:bg-white/90 transition-all flex items-center justify-center gap-2 mt-4 animate-pulse"
         >
-            {step === 3 ? '設定を完了して開始' : '次へ'}
+            {step === 3 ? (isOfflineModeChecked ? 'オフライン設定を完了して待機' : '設定を完了して開始') : '次へ'}
             <ArrowRight size={16} />
         </button>
       </motion.div>
