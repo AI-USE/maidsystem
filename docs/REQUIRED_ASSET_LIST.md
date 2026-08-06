@@ -14,6 +14,8 @@
 | :--- | :--- | :--- | :--- |
 | **BGM (音源)** | `bgm.mp3` | `apps/child/public/bgm.mp3` | 親機のスタート待機中（PREPARE）から終了までループ再生されるバックグラウンドミュージック（※未配置の場合は電子合成音が自動再生されるセーフティ機構付） |
 | **BGM (退室案内用)**| `bgm_exit.mp3` | `apps/child/public/bgm_exit.mp3` | 解説動画が終了し、最終退出ロック画面（MISSION SUCCESSFUL / FAILED）に移行した直後から無限ループで再生される退室用BGM。Setupで設定された音量割合がそのまま適用されます。（※未配置の場合は心地よい和音（ド・ミのサイン波合成音）が自動再生されるセーフティ機構付） |
+| **ヒント音声 1** | `hint1.mp3` | `apps/child/public/hint1.mp3` | ゲーム開始から3分経った状態でロック解除画面（locked）から進めていない場合、自動的にループ再生され続けるヒント音源（BGMは止めない）。ロック解除された瞬間に再生停止します。 |
+| **ヒント音声 2** | `hint2.mp3` | `apps/child/public/hint2.mp3` | ロック画面解除（browsing_pdf_1）から2分経過しても管理者モード（boot_loadingやadmin_desktop）に進めていない場合、自動的にループ再生され続けるヒント音源（BGMは止めない）。管理者モードに到達した瞬間に再生停止します。 |
 | **映像 ( unskippable )**| `start/` フォルダ内の動画 | `apps/child/public/videos/start/` | 親機で「なぞ解きスタート」を押した際、カウントダウン前に全員で一斉上映される強制介入ビデオファイル（推奨：`start.mp4`） |
 | **映像 ( unskippable )**| `admin/` フォルダ内の動画 | `apps/child/public/videos/admin/` | 管理者モード起動3秒後に再生される、全画面「緊急強制システム介入配信」ビデオファイル（推奨：`boot.mp4`） |
 | **映像 ( 結果発表 )**| `result/correct/` 内の動画 | `apps/child/public/videos/result/correct/` | 謎解きに完全正解して脱出成功した際に一斉配信するお祝いビデオファイル（推奨：`correct.mp4`） |
