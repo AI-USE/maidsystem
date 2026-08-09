@@ -857,7 +857,7 @@ const App: React.FC = () => {
 
   // Handle Hint 1 & Hint 2 Timers and loopable audio streams
   useEffect(() => {
-    const shouldPlayHint1 = timerSeconds !== null && timerSeconds <= 240 && puzzleState === 'locked' && !isPaused && !videoPlaying;
+    const shouldPlayHint1 = timerSeconds !== null && timerSeconds <= 270 && puzzleState === 'locked' && !isPaused && !videoPlaying;
 
     if (shouldPlayHint1) {
        if (!hint1AudioRef.current) {
@@ -865,8 +865,9 @@ const App: React.FC = () => {
            audio.loop = true;
            audio.volume = parseFloat(localStorage.getItem('bgmVolume') || '50') / 100;
            hint1AudioRef.current = audio;
-           routeAudioToDevice(audio, 'headphone');
-           audio.play().catch(e => console.warn("hint1 audio play failed:", e));
+           routeAudioToDevice(audio, 'headphone').then(() => {
+               audio.play().catch(e => console.warn("hint1 audio play failed:", e));
+           });
        }
     } else {
        if (hint1AudioRef.current) {
@@ -892,7 +893,7 @@ const App: React.FC = () => {
        interval = setInterval(() => {
           if (browsingPdf1StartTimeRef.current !== null) {
               const elapsedSec = (Date.now() - browsingPdf1StartTimeRef.current) / 1000;
-              if (elapsedSec >= 120) {
+              if (elapsedSec >= 90) {
                   setHint2Triggered(true);
               }
           }
@@ -912,8 +913,9 @@ const App: React.FC = () => {
            audio.loop = true;
            audio.volume = parseFloat(localStorage.getItem('bgmVolume') || '50') / 100;
            hint2AudioRef.current = audio;
-           routeAudioToDevice(audio, 'headphone');
-           audio.play().catch(e => console.warn("hint2 audio play failed:", e));
+           routeAudioToDevice(audio, 'headphone').then(() => {
+               audio.play().catch(e => console.warn("hint2 audio play failed:", e));
+           });
        }
     } else {
        if (hint2AudioRef.current) {
