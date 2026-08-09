@@ -1,10 +1,9 @@
 {
   "correctPasscodes": [
-    "OVERRIDE_SUCCESS",
-    "EXEC_STOP_99"
+    "せいかい",
+    "おーばーらいど"
   ],
   "closePasscodes": [
-    "OVERRIDE_CLOSE",
-    "EXEC_STOP_98"
+    "おしい"
   ]
 }

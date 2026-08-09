@@ -462,6 +462,14 @@ const App: React.FC = () => {
   const typedBufferRef = useRef<string>('');
   const audioRefs = useRef<{ [key: string]: HTMLAudioElement }>({});
 
+  const keepHiraganaOnly = (val: string) => {
+    return val.replace(/[^\u3040-\u309Fー]/g, '');
+  };
+
+  const keepLowercaseAlphanumericOnly = (val: string) => {
+    return val.toLowerCase().replace(/[^a-z0-9]/g, '');
+  };
+
   const formatDisplayTime = (d: Date) => {
     const pad = (n: number) => String(n).padStart(2, '0');
     const datePart = `${d.getFullYear()}/${pad(d.getMonth() + 1)}/${pad(d.getDate())}`;
@@ -707,7 +715,7 @@ const App: React.FC = () => {
               const char = e.key;
               typedBufferRef.current = (typedBufferRef.current + char).slice(-50); // Keep last 50 chars
 
-              const exitPass = localStorage.getItem('pass_exit') || 'MADREST104';
+              const exitPass = localStorage.getItem('pass_exit') || 'まどれすと';
               if (typedBufferRef.current.endsWith(exitPass)) {
                   playSynthSound('success');
                   typedBufferRef.current = '';
@@ -983,7 +991,10 @@ const App: React.FC = () => {
     if (maidDeliveryState === 'delivering') {
        const isOffline = checkActiveOffline();
 
-       const matched = maidItemsData.find(entry => entry.roomCode === maidRoomInput && entry.itemCode === maidItemInput);
+       const matched = maidItemsData.find(entry =>
+           entry.roomCode.toLowerCase() === maidRoomInput.toLowerCase() &&
+           entry.itemCode.toLowerCase() === maidItemInput.toLowerCase()
+       );
        const itemName = matched ? matched.name : '物品';
        const deviceName = localStorage.getItem('deviceName') || '端末';
 
@@ -1095,10 +1106,10 @@ const App: React.FC = () => {
       if (savedExit || savedEvent || savedAdmin || savedSetup) {
           (window as any).electron.send('UPDATE_CONFIG', {
               passwords: {
-                  exit: savedExit || 'MADREST104',
-                  event: savedEvent || 'EVT_TRIGGER_99',
-                  admin: savedAdmin || 'ADMIN_DASH',
-                  setup: savedSetup || 'ADMIN_SETUP'
+                  exit: savedExit || 'まどれすと',
+                  event: savedEvent || 'えべんと',
+                  admin: savedAdmin || 'あどみん',
+                  setup: savedSetup || 'せっとあっぷ'
               }
           });
       }
@@ -1303,7 +1314,7 @@ const App: React.FC = () => {
   };
 
   const handleVerifyPuzzlePassword = () => {
-    const eventPass = localStorage.getItem('pass_event') || 'EVT_TRIGGER_99';
+    const eventPass = localStorage.getItem('pass_event') || 'えべんと';
     if (puzzleInput === eventPass) {
       playSynthSound('success');
       setPuzzleState('browsing_pdf_1');
@@ -1317,9 +1328,9 @@ const App: React.FC = () => {
   };
 
   const handlePowerVerifyPassword = () => {
-    const adminPass = localStorage.getItem('pass_admin') || 'ADMIN_DASH';
-    const exitPass = localStorage.getItem('pass_exit') || 'MADREST104';
-    const setupPass = localStorage.getItem('pass_setup') || 'ADMIN_SETUP';
+    const adminPass = localStorage.getItem('pass_admin') || 'あどみん';
+    const exitPass = localStorage.getItem('pass_exit') || 'まどれすと';
+    const setupPass = localStorage.getItem('pass_setup') || 'せっとあっぷ';
 
     // Always allow Exit passcode to close the application in any state/phase!
     if (powerInput === exitPass) {
@@ -1391,7 +1402,10 @@ const App: React.FC = () => {
              return;
          }
 
-         const matched = maidItemsData.find(entry => entry.roomCode === maidRoomInput && entry.itemCode === maidItemInput);
+         const matched = maidItemsData.find(entry =>
+             entry.roomCode.toLowerCase() === maidRoomInput.toLowerCase() &&
+             entry.itemCode.toLowerCase() === maidItemInput.toLowerCase()
+         );
 
          if (matched) {
              setMaidDeliveryState('delivering');
@@ -1775,23 +1789,17 @@ const App: React.FC = () => {
 
                       <div className="relative w-full mb-2">
                           <input
-                              type={showPuzzleInputRaw ? "text" : "password"}
+                              type="text"
                               autoFocus
-                              placeholder="PASSCODE"
+                              placeholder="ひらがなで入力してください"
                               className={`w-full bg-black/60 border rounded-2xl px-6 py-4 text-center outline-none focus:border-red-950/50 transition-all text-xl font-mono tracking-[0.5em] text-red-500 placeholder-red-900/40 ${puzzleError ? 'border-red-600 shadow-[0_0_15px_rgba(239,68,68,0.2)]' : 'border-red-950/40'}`}
                               value={puzzleInput}
                               onChange={(e) => {
-                                  setPuzzleInput(e.target.value);
+                                  setPuzzleInput(keepHiraganaOnly(e.target.value));
                                   if (puzzleError) setPuzzleError(false);
                               }}
                               onKeyDown={(e) => e.key === 'Enter' && handleVerifyPuzzlePassword()}
                           />
-                          <button
-                              onClick={() => setShowPuzzleInputRaw(!showPuzzleInputRaw)}
-                              className="absolute right-4 top-1/2 -translate-y-1/2 p-2 text-white/20 hover:text-white transition-colors"
-                          >
-                              {showPuzzleInputRaw ? <EyeOff size={18} /> : <Eye size={18} />}
-                          </button>
                       </div>
 
                       <div className="h-6 mb-6">
@@ -2225,10 +2233,10 @@ const App: React.FC = () => {
                                                      <input
                                                           type="text"
                                                           disabled={maidDeliveryState === 'testing' || maidDeliveryState === 'delivering' || maidTimer > 0}
-                                                          placeholder="例: RM101"
-                                                          className="w-full bg-black/60 border border-white/10 rounded-xl px-4 py-3 text-sm font-mono text-white outline-none focus:border-red-900 transition-colors uppercase"
+                                                          placeholder="例: rm101"
+                                                          className="w-full bg-black/60 border border-white/10 rounded-xl px-4 py-3 text-sm font-mono text-white outline-none focus:border-red-900 transition-colors lowercase"
                                                           value={maidRoomInput}
-                                                          onChange={(e) => setMaidRoomInput(e.target.value.toUpperCase())}
+                                                          onChange={(e) => setMaidRoomInput(keepLowercaseAlphanumericOnly(e.target.value))}
                                                      />
                                                 </div>
 
@@ -2237,10 +2245,10 @@ const App: React.FC = () => {
                                                      <input
                                                           type="text"
                                                           disabled={maidDeliveryState === 'testing' || maidDeliveryState === 'delivering' || maidTimer > 0}
-                                                          placeholder="例: ITEM01"
-                                                          className="w-full bg-black/60 border border-white/10 rounded-xl px-4 py-3 text-sm font-mono text-white outline-none focus:border-red-900 transition-colors uppercase"
+                                                          placeholder="例: item01"
+                                                          className="w-full bg-black/60 border border-white/10 rounded-xl px-4 py-3 text-sm font-mono text-white outline-none focus:border-red-900 transition-colors lowercase"
                                                           value={maidItemInput}
-                                                          onChange={(e) => setMaidItemInput(e.target.value.toUpperCase())}
+                                                          onChange={(e) => setMaidItemInput(keepLowercaseAlphanumericOnly(e.target.value))}
                                                      />
                                                 </div>
                                            </div>
@@ -2330,7 +2338,7 @@ const App: React.FC = () => {
                                                         <input
                                                            type="text"
                                                            disabled={timerSeconds === null || timerSeconds > 20}
-                                                           placeholder={timerSeconds !== null && timerSeconds > 20 ? `🚨 残り ${timerSeconds} 秒でセキュリティ解除 🚨` : "STOP CODE を慎重に入力してください"}
+                                                           placeholder={timerSeconds !== null && timerSeconds > 20 ? `🚨 残り ${timerSeconds} 秒でセキュリティ解除 🚨` : "ひらがなで STOP CODE を慎重に入力してください"}
                                                            className={`w-full bg-black/90 border-2 rounded-2xl px-6 py-4 text-center outline-none focus:border-amber-400 text-xl font-extrabold font-mono tracking-[0.4em] text-amber-400 transition-all ${
                                                                (timerSeconds === null || timerSeconds > 20)
                                                                ? 'opacity-40 cursor-not-allowed border-white/5 bg-zinc-950'
@@ -2338,7 +2346,7 @@ const App: React.FC = () => {
                                                            }`}
                                                            value={executionOverrideInput}
                                                            onChange={(e) => {
-                                                               setExecutionOverrideInput(e.target.value);
+                                                               setExecutionOverrideInput(keepHiraganaOnly(e.target.value));
                                                                if (overrideError) setOverrideError(false);
                                                            }}
                                                            onKeyDown={(e) => e.key === 'Enter' && handleVerifyExecutionOverride()}
@@ -2496,13 +2504,13 @@ const App: React.FC = () => {
 
               <div className="relative mb-2">
                 <input
-                    type="password"
+                    type="text"
                     autoFocus
-                    placeholder="ADMIN CODE"
+                    placeholder="ひらがなで入力してください"
                     className={`w-full bg-black/50 border rounded-xl px-4 py-4 text-center outline-none focus:border-red-900 transition-all text-xl tracking-[0.5em] text-red-500 placeholder-red-900/30 ${powerError ? 'border-red-500' : 'border-white/10'}`}
                     value={powerInput}
                     onChange={(e) => {
-                        setPowerInput(e.target.value);
+                        setPowerInput(keepHiraganaOnly(e.target.value));
                         if (powerError) setPowerError(false);
                     }}
                     onKeyDown={(e) => e.key === 'Enter' && handlePowerVerifyPassword()}
@@ -2667,22 +2675,17 @@ const App: React.FC = () => {
                     <label className="text-[10px] uppercase tracking-widest text-white/40 block text-left mb-1 ml-1">管理者ツール起動または終了用パスコード</label>
                     <div className="relative">
                       <input
-                          type={showPasswordRaw ? "text" : "password"}
+                          type="text"
                           autoFocus
+                          placeholder="ひらがなで入力してください"
                           className={`w-full bg-white/5 border rounded-xl px-4 py-3 text-center outline-none focus:border-white/30 transition-all text-sm font-mono tracking-[0.2em] ${passwordError ? 'border-red-500' : 'border-white/10'}`}
                           value={exitPassword}
                           onChange={(e) => {
-                              setExitPassword(e.target.value);
+                              setExitPassword(keepHiraganaOnly(e.target.value));
                               if (passwordError) setPasswordError(false);
                           }}
                           onKeyDown={(e) => e.key === 'Enter' && handleVerifyPassword()}
                       />
-                      <button
-                          onClick={() => setShowPasswordRaw(!showPasswordRaw)}
-                          className="absolute right-4 top-1/2 -translate-y-1/2 p-2 text-white/20 hover:text-white transition-colors"
-                      >
-                          {showPasswordRaw ? <EyeOff size={16} /> : <Eye size={16} />}
-                      </button>
                     </div>
                   </div>
               </div>
