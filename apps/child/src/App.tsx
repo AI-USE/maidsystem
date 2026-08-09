@@ -316,6 +316,21 @@ const playSynthSound = (type: 'tap' | 'type' | 'open' | 'success' | 'bgm') => {
 const speechQueue: string[] = [];
 let isSpeechPlaying = false;
 
+const speakThroughSpeaker = async (text: string) => {
+  try {
+     const url = `https://translate.google.com/translate_tts?ie=UTF-8&tl=ja&client=tw-ob&q=${encodeURIComponent(text)}`;
+     const audio = new Audio(url);
+     await routeAudioToDevice(audio, 'speaker');
+     audio.play().catch(err => {
+         console.warn("Google TTS speaker audio play failed, falling back to speechSynthesis:", err);
+         speakWithQueue(text);
+     });
+  } catch (err) {
+     console.warn("Failed to stream Google TTS to physical speakers, falling back to speechSynthesis:", err);
+     speakWithQueue(text);
+  }
+};
+
 const speakWithQueue = (text: string, forcePriority = false) => {
   if (!('speechSynthesis' in window)) return;
 
@@ -393,6 +408,8 @@ const App: React.FC = () => {
 
   // Admin Desktop Floating PDF 2 Window State
   const [adminPdfOpen, setAdminPdfOpen] = useState(false);
+  const [adminDoc1Open, setAdminDoc1Open] = useState(false);
+  const [hint2Triggered, setHint2Triggered] = useState(false);
   const [showTextFallback1, setShowTextFallback1] = useState(false);
   const [showTextFallback2, setShowTextFallback2] = useState(false);
 
@@ -461,6 +478,9 @@ const App: React.FC = () => {
   const deliveringTtsIntervalRef = useRef<any>(null);
   const typedBufferRef = useRef<string>('');
   const audioRefs = useRef<{ [key: string]: HTMLAudioElement }>({});
+  const hint1AudioRef = useRef<HTMLAudioElement | null>(null);
+  const hint2AudioRef = useRef<HTMLAudioElement | null>(null);
+  const browsingPdf1StartTimeRef = useRef<number | null>(null);
 
   const keepHiraganaOnly = (val: string) => {
     return val.replace(/[^\u3040-\u309Fー]/g, '');
@@ -468,6 +488,14 @@ const App: React.FC = () => {
 
   const keepLowercaseAlphanumericOnly = (val: string) => {
     return val.toLowerCase().replace(/[^a-z0-9]/g, '');
+  };
+
+  const verifyPasscode = (userInput: string, targetPasscode: string) => {
+    if (!userInput || !targetPasscode) return false;
+    const cleanUser = keepHiraganaOnly(userInput);
+    const cleanTarget = keepHiraganaOnly(targetPasscode);
+    if (cleanUser && cleanTarget && cleanUser === cleanTarget) return true;
+    return userInput.trim().toLowerCase() === targetPasscode.trim().toLowerCase();
   };
 
   const formatDisplayTime = (d: Date) => {
@@ -827,6 +855,74 @@ const App: React.FC = () => {
     };
   }, [isPaused]);
 
+  // Handle Hint 1 & Hint 2 Timers and loopable audio streams
+  useEffect(() => {
+    const shouldPlayHint1 = timerSeconds !== null && timerSeconds <= 240 && puzzleState === 'locked' && !isPaused && !videoPlaying;
+
+    if (shouldPlayHint1) {
+       if (!hint1AudioRef.current) {
+           const audio = new Audio('./hint1.mp3');
+           audio.loop = true;
+           audio.volume = parseFloat(localStorage.getItem('bgmVolume') || '50') / 100;
+           hint1AudioRef.current = audio;
+           routeAudioToDevice(audio, 'headphone');
+           audio.play().catch(e => console.warn("hint1 audio play failed:", e));
+       }
+    } else {
+       if (hint1AudioRef.current) {
+           hint1AudioRef.current.pause();
+           hint1AudioRef.current = null;
+       }
+    }
+  }, [timerSeconds, puzzleState, isPaused, videoPlaying]);
+
+  useEffect(() => {
+    if (puzzleState === 'browsing_pdf_1') {
+       if (browsingPdf1StartTimeRef.current === null) {
+           browsingPdf1StartTimeRef.current = Date.now();
+       }
+    } else {
+       browsingPdf1StartTimeRef.current = null;
+    }
+  }, [puzzleState]);
+
+  useEffect(() => {
+    let interval: any;
+    if (puzzleState === 'browsing_pdf_1') {
+       interval = setInterval(() => {
+          if (browsingPdf1StartTimeRef.current !== null) {
+              const elapsedSec = (Date.now() - browsingPdf1StartTimeRef.current) / 1000;
+              if (elapsedSec >= 120) {
+                  setHint2Triggered(true);
+              }
+          }
+       }, 1000);
+    } else {
+       setHint2Triggered(false);
+    }
+    return () => clearInterval(interval);
+  }, [puzzleState]);
+
+  useEffect(() => {
+    const shouldPlayHint2 = hint2Triggered && puzzleState === 'browsing_pdf_1' && !isPaused && !videoPlaying;
+
+    if (shouldPlayHint2) {
+       if (!hint2AudioRef.current) {
+           const audio = new Audio('./hint2.mp3');
+           audio.loop = true;
+           audio.volume = parseFloat(localStorage.getItem('bgmVolume') || '50') / 100;
+           hint2AudioRef.current = audio;
+           routeAudioToDevice(audio, 'headphone');
+           audio.play().catch(e => console.warn("hint2 audio play failed:", e));
+       }
+    } else {
+       if (hint2AudioRef.current) {
+           hint2AudioRef.current.pause();
+           hint2AudioRef.current = null;
+       }
+    }
+  }, [hint2Triggered, puzzleState, isPaused, videoPlaying]);
+
   // Master Clock & Override increment
   useEffect(() => {
     const timer = setInterval(() => {
@@ -965,7 +1061,7 @@ const App: React.FC = () => {
        const playVocalAlarm = () => {
           playSpeakerAlarmSynth('siren', isOffline);
           const text = `警告、部屋名${deviceName}、リタイア。`;
-          speakWithQueue(text, true);
+          speakThroughSpeaker(text);
        };
 
        playVocalAlarm();
@@ -1002,7 +1098,7 @@ const App: React.FC = () => {
           const speakDeliveringOffline = () => {
              playSpeakerAlarmSynth('chime', isOffline);
              const text = `部屋名${deviceName}、アイテム${itemName}、配達要請。`;
-             speakWithQueue(text);
+             speakThroughSpeaker(text);
           };
 
           speakDeliveringOffline();
@@ -1315,7 +1411,7 @@ const App: React.FC = () => {
 
   const handleVerifyPuzzlePassword = () => {
     const eventPass = localStorage.getItem('pass_event') || 'えべんと';
-    if (puzzleInput === eventPass) {
+    if (verifyPasscode(puzzleInput, eventPass)) {
       playSynthSound('success');
       setPuzzleState('browsing_pdf_1');
       setIsEventUnlocked(true);
@@ -1333,7 +1429,7 @@ const App: React.FC = () => {
     const setupPass = localStorage.getItem('pass_setup') || 'せっとあっぷ';
 
     // Always allow Exit passcode to close the application in any state/phase!
-    if (powerInput === exitPass) {
+    if (verifyPasscode(powerInput, exitPass)) {
         playSynthSound('success');
         setShowPowerPrompt(false);
         setPowerInput('');
@@ -1347,7 +1443,7 @@ const App: React.FC = () => {
     }
 
     // Always allow Setup passcode to reset to setup wizard in any state/phase!
-    if (powerInput === setupPass) {
+    if (verifyPasscode(powerInput, setupPass)) {
         playSynthSound('success');
         setShowPowerPrompt(false);
         setPowerInput('');
@@ -1363,7 +1459,7 @@ const App: React.FC = () => {
 
     // Admin passcode is strictly restricted to active gameplay phases (locked, browsing_pdf_1) and retired state to boot Admin Desktop.
     // It cannot be used during idle, video playback, etc.
-    if (powerInput === adminPass) {
+    if (verifyPasscode(powerInput, adminPass)) {
         if (puzzleState !== 'locked' && puzzleState !== 'browsing_pdf_1' && puzzleState !== 'retired') {
             setPowerError(true);
             return;
@@ -1434,14 +1530,13 @@ const App: React.FC = () => {
      setOverrideText("処刑停止を申請しました。残り時間をお待ちください。");
 
      // Check passcode proposal
-     const cleanInput = executionOverrideInput.trim().toUpperCase();
      const correctList = puzzleAnswersData.correctPasscodes || [];
      const closeList = puzzleAnswersData.closePasscodes || [];
 
      let outcome = 'failed';
-     if (correctList.some(p => p.toUpperCase() === cleanInput)) {
+     if (correctList.some(p => verifyPasscode(executionOverrideInput, p))) {
          outcome = 'correct';
-     } else if (closeList.some(p => p.toUpperCase() === cleanInput)) {
+     } else if (closeList.some(p => verifyPasscode(executionOverrideInput, p))) {
          outcome = 'close';
      }
 
@@ -1795,7 +1890,7 @@ const App: React.FC = () => {
                               className={`w-full bg-black/60 border rounded-2xl px-6 py-4 text-center outline-none focus:border-red-950/50 transition-all text-xl font-mono tracking-[0.5em] text-red-500 placeholder-red-900/40 ${puzzleError ? 'border-red-600 shadow-[0_0_15px_rgba(239,68,68,0.2)]' : 'border-red-950/40'}`}
                               value={puzzleInput}
                               onChange={(e) => {
-                                  setPuzzleInput(keepHiraganaOnly(e.target.value));
+                                  setPuzzleInput(e.target.value);
                                   if (puzzleError) setPuzzleError(false);
                               }}
                               onKeyDown={(e) => e.key === 'Enter' && handleVerifyPuzzlePassword()}
@@ -2062,40 +2157,6 @@ const App: React.FC = () => {
         {/* State B: admin_desktop (GOV-CORE OS Desktop) */}
         {puzzleState === 'admin_desktop' && (
             <div className="w-full h-full flex gap-8 relative">
-                {/* Float PDF 2 Overlay - Opens on startup default. Can be closed/reopened. */}
-                <AnimatePresence>
-                    {adminPdfOpen && (
-                        <motion.div
-                          initial={{ opacity: 0, y: 30, scale: 0.95 }}
-                          animate={{ opacity: 1, y: 0, scale: 1 }}
-                          exit={{ opacity: 0, y: 30, scale: 0.95 }}
-                          className="absolute inset-0 z-40 glass-panel border-red-950/40 bg-black/95 p-2 rounded-[32px] flex flex-col overflow-hidden shadow-[0_32px_64px_rgba(0,0,0,0.9)]"
-                        >
-                            <div className="flex items-center justify-between border-b border-white/5 pb-2 px-4 mb-2">
-                                 <div className="flex items-center gap-3">
-                                      <FileText className="text-red-500 animate-pulse" size={20} />
-                                      <div>
-                                          <h3 className="text-xs font-black text-white uppercase tracking-wider">管理者限定極秘データ_SEC_992.pdf</h3>
-                                      </div>
-                                 </div>
-                                 <button
-                                   onClick={() => setAdminPdfOpen(false)}
-                                   className="p-1 hover:bg-white/10 rounded-full transition-colors text-white/40 hover:text-white"
-                                 >
-                                      <X size={16} />
-                                 </button>
-                            </div>
-
-                            <div className="flex-1 rounded-2xl overflow-hidden bg-zinc-950 relative flex flex-col">
-                                 <iframe
-                                   src="./documents/doc2.pdf#toolbar=0"
-                                   className="w-full h-full border-0"
-                                   title="管理者限定極秘データ_SEC_992.pdf"
-                                 />
-                            </div>
-                        </motion.div>
-                    )}
-                </AnimatePresence>
 
                 {/* Decoupled Admin Software windows opening in gorgeous Fullscreen overlays */}
                 <AnimatePresence>
@@ -2134,13 +2195,13 @@ const App: React.FC = () => {
                                                       onClick={() => setActiveCamChannel(1)}
                                                       className={`px-6 py-3 rounded-xl border text-xs font-bold uppercase tracking-widest transition-all ${activeCamChannel === 1 ? 'bg-red-500/10 border-red-500 text-white' : 'bg-white/5 border-white/10 text-white/40 hover:bg-white/10'}`}
                                                     >
-                                                         CAM_01: エントランス
+                                                         CAM_01: メイド喫茶部
                                                     </button>
                                                     <button
                                                       onClick={() => setActiveCamChannel(2)}
                                                       className={`px-6 py-3 rounded-xl border text-xs font-bold uppercase tracking-widest transition-all ${activeCamChannel === 2 ? 'bg-red-500/10 border-red-500 text-white' : 'bg-white/5 border-white/10 text-white/40 hover:bg-white/10'}`}
                                                     >
-                                                         CAM_02: 制御室
+                                                         CAM_02: 管理室
                                                     </button>
                                                </div>
 
@@ -2346,7 +2407,7 @@ const App: React.FC = () => {
                                                            }`}
                                                            value={executionOverrideInput}
                                                            onChange={(e) => {
-                                                               setExecutionOverrideInput(keepHiraganaOnly(e.target.value));
+                                                               setExecutionOverrideInput(e.target.value);
                                                                if (overrideError) setOverrideError(false);
                                                            }}
                                                            onKeyDown={(e) => e.key === 'Enter' && handleVerifyExecutionOverride()}
@@ -2439,6 +2500,20 @@ const App: React.FC = () => {
                          </div>
                     </button>
 
+                    {/* PDF 1 Re-opener icon */}
+                    <button
+                      onClick={() => setAdminDoc1Open(true)}
+                      className="flex items-center gap-4 p-5 rounded-2xl border border-red-500/20 bg-black/40 text-left hover:bg-red-500/10 transition-all text-white/60"
+                    >
+                         <div className="p-4 bg-red-950/20 rounded-xl text-red-500">
+                              <FileText size={24} />
+                         </div>
+                         <div>
+                              <div className="text-xs font-black uppercase tracking-widest text-white">機密データ_LOG_832</div>
+                              <span className="text-[8px] text-red-500/60 uppercase font-mono mt-1 block">REOPEN_PDF_DOCUMENT_1</span>
+                         </div>
+                    </button>
+
                     <div className="flex-1 glass-panel border-white/5 bg-black/20 p-6 flex flex-col justify-center items-center text-center">
                          <ShieldCheck className="text-green-500 animate-pulse mb-3" size={32} />
                          <span className="text-[9px] font-black uppercase text-green-500 tracking-widest">GOV_CORE SECURED</span>
@@ -2510,7 +2585,7 @@ const App: React.FC = () => {
                     className={`w-full bg-black/50 border rounded-xl px-4 py-4 text-center outline-none focus:border-red-900 transition-all text-xl tracking-[0.5em] text-red-500 placeholder-red-900/30 ${powerError ? 'border-red-500' : 'border-white/10'}`}
                     value={powerInput}
                     onChange={(e) => {
-                        setPowerInput(keepHiraganaOnly(e.target.value));
+                        setPowerInput(e.target.value);
                         if (powerError) setPowerError(false);
                     }}
                     onKeyDown={(e) => e.key === 'Enter' && handlePowerVerifyPassword()}
@@ -2681,7 +2756,7 @@ const App: React.FC = () => {
                           className={`w-full bg-white/5 border rounded-xl px-4 py-3 text-center outline-none focus:border-white/30 transition-all text-sm font-mono tracking-[0.2em] ${passwordError ? 'border-red-500' : 'border-white/10'}`}
                           value={exitPassword}
                           onChange={(e) => {
-                              setExitPassword(keepHiraganaOnly(e.target.value));
+                              setExitPassword(e.target.value);
                               if (passwordError) setPasswordError(false);
                           }}
                           onKeyDown={(e) => e.key === 'Enter' && handleVerifyPassword()}
@@ -2721,6 +2796,75 @@ const App: React.FC = () => {
             </motion.div>
           </motion.div>
         )}
+      </AnimatePresence>
+
+      {/* Global Admin Desktop Floating PDF Overlays (Permanently on top of all layers) */}
+      <AnimatePresence>
+          {puzzleState === 'admin_desktop' && adminPdfOpen && (
+              <motion.div
+                initial={{ opacity: 0, y: 30, scale: 0.95 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: 30, scale: 0.95 }}
+                className="fixed inset-6 z-[10250] glass-panel border-red-950/40 bg-[#050508]/98 p-4 rounded-[32px] flex flex-col overflow-hidden shadow-[0_32px_64px_rgba(0,0,0,0.9)]"
+              >
+                  <div className="flex items-center justify-between border-b border-white/5 pb-3 px-4 mb-3">
+                       <div className="flex items-center gap-3">
+                            <FileText className="text-red-500 animate-pulse" size={20} />
+                            <div>
+                                <h3 className="text-sm font-black text-white uppercase tracking-wider">管理者限定極秘データ_SEC_992.pdf</h3>
+                            </div>
+                       </div>
+                       <button
+                         onClick={() => setAdminPdfOpen(false)}
+                         className="p-1.5 hover:bg-white/10 rounded-full transition-colors text-white/40 hover:text-white"
+                       >
+                            <X size={18} />
+                       </button>
+                  </div>
+
+                  <div className="flex-1 rounded-2xl overflow-hidden bg-zinc-950 relative flex flex-col">
+                       <iframe
+                         src="./documents/doc2.pdf#toolbar=0"
+                         className="w-full h-full border-0"
+                         title="管理者限定極秘データ_SEC_992.pdf"
+                       />
+                  </div>
+              </motion.div>
+          )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+          {puzzleState === 'admin_desktop' && adminDoc1Open && (
+              <motion.div
+                initial={{ opacity: 0, y: 30, scale: 0.95 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: 30, scale: 0.95 }}
+                className="fixed inset-6 z-[10250] glass-panel border-red-950/40 bg-[#050508]/98 p-4 rounded-[32px] flex flex-col overflow-hidden shadow-[0_32px_64px_rgba(0,0,0,0.9)]"
+              >
+                  <div className="flex items-center justify-between border-b border-white/5 pb-3 px-4 mb-3">
+                       <div className="flex items-center gap-3">
+                            <FileText className="text-red-500 animate-pulse" size={20} />
+                            <div>
+                                <h3 className="text-sm font-black text-white uppercase tracking-wider">処刑装置起動手順_LOG_832.pdf</h3>
+                            </div>
+                       </div>
+                       <button
+                         onClick={() => setAdminDoc1Open(false)}
+                         className="p-1.5 hover:bg-white/10 rounded-full transition-colors text-white/40 hover:text-white"
+                       >
+                            <X size={18} />
+                       </button>
+                  </div>
+
+                  <div className="flex-1 rounded-2xl overflow-hidden bg-zinc-950 relative flex flex-col">
+                       <iframe
+                         src="./documents/doc1.pdf#toolbar=0"
+                         className="w-full h-full border-0"
+                         title="処刑装置起動手順_LOG_832.pdf"
+                       />
+                  </div>
+              </motion.div>
+          )}
       </AnimatePresence>
     </div>
     </OSContext.Provider>

@@ -22,8 +22,8 @@
 | **映像 ( 結果発表 )**| `result/close/` 内の動画 | `apps/child/public/videos/result/close/` | 惜しくも「おしい」パスコードで終わってしまった際に一斉配信するおしいビデオファイル（推奨：`close.mp4` |
 | **映像 ( 結果発表 )**| `result/failed/` 内の動画 | `apps/child/public/videos/result/failed/` | 謎解きに失敗または無回答だった際に一斉配信する失敗ビデオファイル（推奨：`failed.mp4`） |
 | **映像 ( 解説用 )**| `commentary/` フォルダ内の動画 | `apps/child/public/videos/commentary/` | 解説時などに使用する解説チュートリアル上映用ビデオファイル（推奨：`commentary.mp4`） |
-| **映像 ( 監視用 )**| `cam1.mp4` | `apps/child/public/videos/cam1.mp4` | ビデオセキュリティ監視グリッド 1ch 用のループ映像ファイル |
-| **映像 ( 監視用 )**| `cam2.mp4` | `apps/child/public/videos/cam2.mp4` | ビデオセキュリティ監視グリッド 2ch 用のループ映像ファイル |
+| **映像 ( 監視用 )**| `cam1.mp4` | `apps/child/public/videos/cam1.mp4` | メイド喫茶部 (CAM 1) 用のループ映像ファイル |
+| **映像 ( 監視用 )**| `cam2.mp4` | `apps/child/public/videos/cam2.mp4` | 管理室 (CAM 2) 用のループ映像ファイル |
 | **PDF (謎解き本編用)** | `doc1.pdf` | `apps/child/public/documents/doc1.pdf` | ロック解除後に表示される「機密文書 1」としてのフルスクリーン PDF ドキュメント |
 | **PDF (謎解き本編用)** | `doc2.pdf` | `apps/child/public/documents/doc2.pdf` | 管理者デスクトップ内で閲覧する「機密文書 2」としての PDF ドキュメント |
 

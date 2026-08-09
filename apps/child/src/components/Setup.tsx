@@ -281,40 +281,40 @@ export const Setup: React.FC<OfflineSetupProps> = ({ onComplete, onStartOffline,
                         <label className="text-[10px] uppercase tracking-widest text-white/40 ml-2">終了用</label>
                         <input
                             type="text"
-                            placeholder="ひらがな限定"
+                            placeholder="英数字ひらがなどれでも可 (ひらがなで検証されます)"
                             className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 outline-none focus:border-white/30 transition-all font-mono"
                             value={passwords.exit}
-                            onChange={(e) => setPasswords({...passwords, exit: keepHiraganaOnly(e.target.value)})}
+                            onChange={(e) => setPasswords({...passwords, exit: e.target.value})}
                         />
                     </div>
                     <div>
                         <label className="text-[10px] uppercase tracking-widest text-white/40 ml-2">イベント画面ロック解除用</label>
                         <input
                             type="text"
-                            placeholder="ひらがな限定"
+                            placeholder="英数字ひらがなどれでも可 (ひらがなで検証されます)"
                             className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 outline-none focus:border-white/30 transition-all font-mono"
                             value={passwords.event}
-                            onChange={(e) => setPasswords({...passwords, event: keepHiraganaOnly(e.target.value)})}
+                            onChange={(e) => setPasswords({...passwords, event: e.target.value})}
                         />
                     </div>
                     <div>
                         <label className="text-[10px] uppercase tracking-widest text-white/40 ml-2">管理者用イベント解除用（電源ボタン用）</label>
                         <input
                             type="text"
-                            placeholder="ひらがな限定"
+                            placeholder="英数字ひらがなどれでも可 (ひらがなで検証されます)"
                             className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 outline-none focus:border-white/30 transition-all font-mono"
                             value={passwords.admin}
-                            onChange={(e) => setPasswords({...passwords, admin: keepHiraganaOnly(e.target.value)})}
+                            onChange={(e) => setPasswords({...passwords, admin: e.target.value})}
                         />
                     </div>
                     <div>
                         <label className="text-[10px] uppercase tracking-widest text-white/40 ml-2">管理者ツール起動用（設定画面用）</label>
                         <input
                             type="text"
-                            placeholder="ひらがな限定"
+                            placeholder="英数字ひらがなどれでも可 (ひらがなで検証されます)"
                             className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 outline-none focus:border-white/30 transition-all font-mono"
                             value={passwords.setup}
-                            onChange={(e) => setPasswords({...passwords, setup: keepHiraganaOnly(e.target.value)})}
+                            onChange={(e) => setPasswords({...passwords, setup: e.target.value})}
                         />
                     </div>
 

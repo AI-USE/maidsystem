@@ -91,6 +91,19 @@ function setupShortcuts() {
     }
 }
 
+const keepHiraganaOnly = (val) => {
+  if (typeof val !== 'string') return '';
+  return val.replace(/[^\u3040-\u309Fー]/g, '');
+};
+
+const verifyPasscode = (userInput, targetPasscode) => {
+  if (!userInput || !targetPasscode) return false;
+  const cleanUser = keepHiraganaOnly(userInput);
+  const cleanTarget = keepHiraganaOnly(targetPasscode);
+  if (cleanUser && cleanTarget && cleanUser === cleanTarget) return true;
+  return userInput.trim().toLowerCase() === targetPasscode.trim().toLowerCase();
+};
+
 ipcMain.on('VERIFY_PASSWORD', (event, password) => {
   // Re-read env vars just in case they were updated in the environment (unlikely but possible if using a watch tool)
   const exitPass = process.env.MADOS_PASS_EXIT || PASSWORDS.exit;
@@ -100,14 +113,14 @@ ipcMain.on('VERIFY_PASSWORD', (event, password) => {
 
   console.log('Verifying password:', password, 'against:', { exitPass, eventPass, adminPass, setupPass });
 
-  if (password === exitPass) {
+  if (verifyPasscode(password, exitPass)) {
     isAllowExit = true;
     app.exit(0);
-  } else if (password === eventPass) {
+  } else if (verifyPasscode(password, eventPass)) {
     event.reply('PASSWORD_ACTION', 'TRIGGER_EVENT');
-  } else if (password === adminPass) {
+  } else if (verifyPasscode(password, adminPass)) {
     event.reply('PASSWORD_ACTION', 'BOOT_ADMIN_DESKTOP');
-  } else if (password === setupPass) {
+  } else if (verifyPasscode(password, setupPass)) {
     event.reply('PASSWORD_ACTION', 'SHOW_SETUP');
   } else {
     event.reply('PASSWORD_RESULT', false);
@@ -117,7 +130,7 @@ ipcMain.on('VERIFY_PASSWORD', (event, password) => {
 ipcMain.on('VERIFY_SETUP_PASSWORD', (event, password) => {
   const setupPass = process.env.MADOS_PASS_SETUP || PASSWORDS.setup;
   console.log('Verifying setup password:', password, 'against:', setupPass);
-  if (password === setupPass) {
+  if (verifyPasscode(password, setupPass)) {
     event.reply('PASSWORD_ACTION', 'SHOW_SETUP');
   } else {
     event.reply('PASSWORD_RESULT', false);
