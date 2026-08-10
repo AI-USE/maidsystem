@@ -1964,7 +1964,7 @@ const App: React.FC = () => {
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
-                className="fixed inset-0 z-[2000] bg-black flex flex-col items-center justify-center p-8 font-mono overflow-hidden select-none"
+                className="fixed inset-0 z-[10400] bg-black flex flex-col items-center justify-center p-8 font-mono overflow-hidden select-none"
               >
                   {/* Cyber Scanline Grid Overlay */}
                   <div className="scanlines z-0" />
