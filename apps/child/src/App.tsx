@@ -2173,8 +2173,6 @@ const App: React.FC = () => {
                                  <div className="flex items-center gap-4">
                                       <ShieldCheck className="text-red-500" size={24} />
                                       <span className="text-sm font-black uppercase tracking-[0.3em] text-white">
-                                           {openAppId === 'camera' && '防犯カメラシステム (SECURITY_CAM_MONITOR)'}
-                                           {openAppId === 'maid' && 'メイドコントロールシステム (MAID_CONTROLLER)'}
                                            {openAppId === 'stop_execution' && '処刑停止システム (EXECUTION_OVERRIDE)'}
                                       </span>
                                  </div>
@@ -2187,169 +2185,6 @@ const App: React.FC = () => {
                              </div>
 
                              <div className="flex-1 overflow-y-auto relative p-4">
-                                  {/* Fullscreen Video Camera Module (Looping mp4 files with Toggle controls) */}
-                                  {openAppId === 'camera' && (
-                                      <div className="h-full flex flex-col gap-6">
-                                          {/* Camera Channel Tabs and Playback control skip/rewind buttons */}
-                                          <div className="flex justify-between items-center bg-white/5 p-4 rounded-2xl border border-white/5">
-                                               <div className="flex gap-4">
-                                                    <button
-                                                      onClick={() => setActiveCamChannel(1)}
-                                                      className={`px-6 py-3 rounded-xl border text-xs font-bold uppercase tracking-widest transition-all ${activeCamChannel === 1 ? 'bg-red-500/10 border-red-500 text-white' : 'bg-white/5 border-white/10 text-white/40 hover:bg-white/10'}`}
-                                                    >
-                                                         CAM_01: メイド喫茶部
-                                                    </button>
-                                                    <button
-                                                      onClick={() => setActiveCamChannel(2)}
-                                                      className={`px-6 py-3 rounded-xl border text-xs font-bold uppercase tracking-widest transition-all ${activeCamChannel === 2 ? 'bg-red-500/10 border-red-500 text-white' : 'bg-white/5 border-white/10 text-white/40 hover:bg-white/10'}`}
-                                                    >
-                                                         CAM_02: 管理室
-                                                    </button>
-                                               </div>
-
-                                               {/* Video time manipulation control buttons */}
-                                               <div className="flex items-center gap-2">
-                                                    <button
-                                                      onClick={() => {
-                                                          const ref = activeCamChannel === 1 ? cam1VideoRef : cam2VideoRef;
-                                                          if (ref.current) ref.current.currentTime = 0;
-                                                      }}
-                                                      className="px-4 py-2 bg-white/5 hover:bg-white/10 rounded-xl border border-white/10 text-[10px] font-bold uppercase tracking-wider"
-                                                    >
-                                                         最初から
-                                                    </button>
-                                                    <button
-                                                      onClick={() => {
-                                                          const ref = activeCamChannel === 1 ? cam1VideoRef : cam2VideoRef;
-                                                          if (ref.current) ref.current.currentTime = Math.max(0, ref.current.currentTime - 10);
-                                                      }}
-                                                      className="px-4 py-2 bg-white/5 hover:bg-white/10 rounded-xl border border-white/10 text-[10px] font-bold uppercase tracking-wider"
-                                                    >
-                                                         10秒戻し
-                                                    </button>
-                                                    <button
-                                                      onClick={() => {
-                                                          const ref = activeCamChannel === 1 ? cam1VideoRef : cam2VideoRef;
-                                                          if (ref.current) ref.current.currentTime = ref.current.currentTime + 10;
-                                                      }}
-                                                      className="px-4 py-2 bg-white/5 hover:bg-white/10 rounded-xl border border-white/10 text-[10px] font-bold uppercase tracking-wider"
-                                                    >
-                                                         10秒送り
-                                                    </button>
-                                               </div>
-                                          </div>
-
-                                          <div className="flex-1 bg-black rounded-3xl border border-white/10 overflow-hidden relative aspect-video max-w-4xl mx-auto w-full flex items-center justify-center">
-                                               <div className="scanlines z-0" />
-                                               {activeCamChannel === 1 ? (
-                                                    <video
-                                                      key="cam1"
-                                                      ref={cam1VideoRef}
-                                                      src="./videos/cam1.mp4"
-                                                      autoPlay
-                                                      loop
-                                                      muted
-                                                      playsInline
-                                                      className="w-full h-full object-cover"
-                                                      onTimeUpdate={(e) => setCamCurrentTime(e.currentTarget.currentTime)}
-                                                      onLoadedMetadata={(e) => setCamDuration(e.currentTarget.duration)}
-                                                    />
-                                               ) : (
-                                                    <video
-                                                      key="cam2"
-                                                      ref={cam2VideoRef}
-                                                      src="./videos/cam2.mp4"
-                                                      autoPlay
-                                                      loop
-                                                      muted
-                                                      playsInline
-                                                      className="w-full h-full object-cover"
-                                                      onTimeUpdate={(e) => setCamCurrentTime(e.currentTarget.currentTime)}
-                                                      onLoadedMetadata={(e) => setCamDuration(e.currentTarget.duration)}
-                                                    />
-                                               )}
-                                               <div className="absolute top-4 left-4 px-3 py-1 bg-black/80 rounded-md font-mono text-xs text-white/80">
-                                                    CAM_0{activeCamChannel} - LIVE BROADCAST
-                                               </div>
-                                               <div className="absolute top-4 right-4 px-3 py-1 bg-black/80 rounded-md font-mono text-xs text-red-500 font-bold animate-pulse flex items-center gap-1.5 border border-red-500/20">
-                                                    <span className="w-1.5 h-1.5 rounded-full bg-red-600" />
-                                                    {getCameraDisplayTime()}
-                                               </div>
-                                          </div>
-                                      </div>
-                                  )}
-
-                                  {/* Mock Maid Control System App */}
-                                  {openAppId === 'maid' && (
-                                      <div className={`max-w-md mx-auto space-y-6 py-6 font-mono text-center p-6 border rounded-[24px] transition-all ${maidDeliveryState === 'delivering' ? 'rainbow-pulse-border bg-black/60' : 'border-transparent bg-transparent'}`}>
-                                           <div className="w-16 h-16 bg-red-950/40 rounded-[20px] flex items-center justify-center mx-auto border border-red-500/20 animate-pulse">
-                                               <Cpu className="text-red-500" size={32} />
-                                           </div>
-                                           <div>
-                                                <h4 className="text-sm font-bold uppercase tracking-widest text-white">メイド配達コントロールシステム</h4>
-                                                <p className="text-[10px] text-white/40 mt-1 uppercase">配達を要請する物品情報と部屋コードを入力してください。</p>
-                                           </div>
-
-                                           <div className="space-y-4 text-left">
-                                                <div>
-                                                     <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest block mb-1">物品がある部屋コード</label>
-                                                     <input
-                                                          type="text"
-                                                          disabled={maidDeliveryState === 'testing' || maidDeliveryState === 'delivering' || maidTimer > 0}
-                                                          placeholder="例: rm101"
-                                                          className="w-full bg-black/60 border border-white/10 rounded-xl px-4 py-3 text-sm font-mono text-white outline-none focus:border-red-900 transition-colors lowercase"
-                                                          value={maidRoomInput}
-                                                          onChange={(e) => setMaidRoomInput(keepLowercaseAlphanumericOnly(e.target.value))}
-                                                     />
-                                                </div>
-
-                                                <div>
-                                                     <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest block mb-1">物品コード</label>
-                                                     <input
-                                                          type="text"
-                                                          disabled={maidDeliveryState === 'testing' || maidDeliveryState === 'delivering' || maidTimer > 0}
-                                                          placeholder="例: item01"
-                                                          className="w-full bg-black/60 border border-white/10 rounded-xl px-4 py-3 text-sm font-mono text-white outline-none focus:border-red-900 transition-colors lowercase"
-                                                          value={maidItemInput}
-                                                          onChange={(e) => setMaidItemInput(keepLowercaseAlphanumericOnly(e.target.value))}
-                                                     />
-                                                </div>
-                                           </div>
-
-                                           {maidDeliveryState === 'testing' && (
-                                                <div className="p-4 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center gap-2">
-                                                     <Loader2 size={16} className="text-white/60 animate-spin" />
-                                                </div>
-                                           )}
-
-                                           {maidDeliveryState === 'delivering' && (
-                                                <div className="p-4 rounded-xl bg-green-950/20 border border-green-900/30 flex items-center justify-center gap-2">
-                                                     <div className="w-1.5 h-1.5 rounded-full bg-green-400 animate-ping" />
-                                                     <span className="text-xs text-green-400 font-bold uppercase tracking-widest">現在、メイドが物品を配達中です。</span>
-                                                </div>
-                                           )}
-
-                                           {maidDeliveryState === 'error' && (
-                                                <div className="p-4 rounded-xl bg-red-950/20 border border-red-900/30 flex flex-col gap-1 items-center justify-center text-red-400">
-                                                     <AlertCircle size={20} />
-                                                     <span className="text-xs font-bold uppercase tracking-widest">エラー: {maidDeliveryError}</span>
-                                                </div>
-                                           )}
-
-                                           <button
-                                                disabled={!maidRoomInput || !maidItemInput || maidDeliveryState === 'testing' || maidDeliveryState === 'delivering' || maidTimer > 0}
-                                                onClick={handleMaidDeliver}
-                                                className={`w-full py-3.5 rounded-xl font-bold uppercase text-[10px] tracking-widest transition-colors ${
-                                                    (!maidRoomInput || !maidItemInput || maidDeliveryState === 'testing' || maidDeliveryState === 'delivering' || maidTimer > 0)
-                                                    ? 'bg-white/5 border border-white/5 text-white/20 cursor-not-allowed'
-                                                    : 'bg-red-950/40 hover:bg-red-950/60 border border-red-900/40 text-red-400'
-                                                }`}
-                                           >
-                                                {maidTimer > 0 ? `入力制限中: あと ${maidTimer} 秒` : '配達を要請'}
-                                           </button>
-                                      </div>
-                                  )}
-
                                   {/* Mock Execution Override App */}
                                   {openAppId === 'stop_execution' && (
                                       <div className="max-w-xl mx-auto text-center space-y-8 py-4 p-8 rounded-3xl border border-amber-500/30 bg-black/80 shadow-[0_0_60px_rgba(245,158,11,0.15)] relative overflow-hidden">
@@ -2445,35 +2280,9 @@ const App: React.FC = () => {
                     </div>
                 </div>
 
-                {/* Right Desktop: 3 Large Prominent Mock App Icon Buttons */}
+                {/* Right Desktop: Prominent Mock App Icon Buttons */}
                 <div className="w-80 flex flex-col gap-4">
                     <div className="text-[10px] font-bold text-white/30 uppercase tracking-[0.2em] mb-1 px-1">高度管理者用モジュール</div>
-
-                    <button
-                      onClick={() => setOpenAppId('camera')}
-                      className={`flex items-center gap-4 p-5 rounded-2xl border text-left transition-all ${openAppId === 'camera' ? 'bg-red-500/10 border-red-500 text-white' : 'bg-black/40 border-white/5 text-white/60 hover:bg-white/5'}`}
-                    >
-                         <div className="p-4 bg-white/5 rounded-xl text-white">
-                              <Camera size={24} />
-                         </div>
-                         <div>
-                              <div className="text-xs font-black uppercase tracking-widest text-white">防犯カメラシステム</div>
-                              <span className="text-[8px] text-white/30 uppercase font-mono mt-1 block">SECURITY_CAM_GRID</span>
-                         </div>
-                    </button>
-
-                    <button
-                      onClick={() => setOpenAppId('maid')}
-                      className={`flex items-center gap-4 p-5 rounded-2xl border text-left transition-all ${openAppId === 'maid' ? 'bg-red-500/10 border-red-500 text-white' : 'bg-black/40 border-white/5 text-white/60 hover:bg-white/5'}`}
-                    >
-                         <div className="p-4 bg-white/5 rounded-xl text-white">
-                              <Cpu size={24} />
-                         </div>
-                         <div>
-                              <div className="text-xs font-black uppercase tracking-widest text-white">メイドコントロール</div>
-                              <span className="text-[8px] text-white/30 uppercase font-mono mt-1 block">MAID_MODULE_CTRL</span>
-                         </div>
-                    </button>
 
                     <button
                       onClick={() => setOpenAppId('stop_execution')}
