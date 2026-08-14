@@ -857,7 +857,7 @@ const App: React.FC = () => {
 
   // Handle Hint 1 & Hint 2 Timers and loopable audio streams
   useEffect(() => {
-    const shouldPlayHint1 = timerSeconds !== null && timerSeconds <= 270 && puzzleState === 'locked' && !isPaused && !videoPlaying;
+    const shouldPlayHint1 = timerSeconds !== null && timerSeconds <= 360 && puzzleState === 'locked' && !isPaused && !videoPlaying;
 
     if (shouldPlayHint1) {
        if (!hint1AudioRef.current) {
@@ -893,7 +893,7 @@ const App: React.FC = () => {
        interval = setInterval(() => {
           if (browsingPdf1StartTimeRef.current !== null) {
               const elapsedSec = (Date.now() - browsingPdf1StartTimeRef.current) / 1000;
-              if (elapsedSec >= 90) {
+              if (elapsedSec >= 60) {
                   setHint2Triggered(true);
               }
           }
@@ -924,6 +924,18 @@ const App: React.FC = () => {
        }
     }
   }, [hint2Triggered, puzzleState, isPaused, videoPlaying]);
+
+  // Play single-play unlock audio exactly once when progressing from locked to browsing_pdf_1
+  useEffect(() => {
+    if (puzzleState === 'browsing_pdf_1') {
+       const audio = new Audio('./unlock.mp3');
+       audio.loop = false;
+       audio.volume = parseFloat(localStorage.getItem('bgmVolume') || '50') / 100;
+       routeAudioToDevice(audio, 'headphone').then(() => {
+           audio.play().catch(e => console.warn("unlock.mp3 audio play failed:", e));
+       });
+    }
+  }, [puzzleState]);
 
   // Master Clock & Override increment
   useEffect(() => {
