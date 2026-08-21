@@ -617,22 +617,21 @@ const App: React.FC = () => {
       }
     }
 
-    const isOffline = checkActiveOffline();
     const isResultsVideo = videoType === 'correct' || videoType === 'close' || videoType === 'failed';
 
-    if (isResultsVideo && !isOffline) {
-        emit('CONNECTION_MSG', { text: 'RESULTS_VIDEO_FINISHED' });
-    }
-
-    setVideoType('none');
-
-    if (isOffline && isResultsVideo) {
+    if (isResultsVideo) {
+      const isOffline = checkActiveOffline();
+      if (!isOffline) {
+          emit('CONNECTION_MSG', { text: 'RESULTS_VIDEO_FINISHED' });
+      }
       setTimeout(() => {
         playSynthSound('open');
         setVideoPlaying(true);
         setVideoProgress(0);
         setVideoType('commentary');
       }, 1000);
+    } else {
+      setVideoType('none');
     }
   }, [videoType, gameResult, checkActiveOffline]);
 
@@ -986,68 +985,39 @@ const App: React.FC = () => {
   useEffect(() => {
     let interval: any;
     if (timerSeconds !== null && timerSeconds > 0 && puzzleState !== 'idle' && !isPaused) {
-      const isOffline = checkActiveOffline();
       interval = setInterval(() => {
-        if (isOffline) {
-          setTimerSeconds(prev => {
-             if (prev === null) return null;
-             const next = prev - 1;
-             if (next <= 0) {
-                 clearInterval(interval);
-                 setTimeout(() => {
-                    const outcome = gameResult !== 'none' ? gameResult : 'failed';
-                    startVideoPlayback(outcome);
-                 }, 3000);
-                 return 0;
+        if (childEndTimestampRef.current !== null) {
+          const now = Date.now();
+          const next = Math.max(0, Math.ceil((childEndTimestampRef.current - now) / 1000));
+
+          if (next === 0 && timerSeconds > 0) {
+             setTimerSeconds(0);
+             const outcome = gameResult !== 'none' ? gameResult : 'failed';
+             startVideoPlayback(outcome);
+          } else if (next > 0) {
+             setTimerSeconds(next);
+
+             if (next !== lastAnnouncedSecRef.current) {
+                 lastAnnouncedSecRef.current = next;
+
+                 // 1. Speak announcement at exactly 30 seconds remaining
+                 if (next === 30) {
+                     speakWithQueue("間もなく処刑コードが入力できます。");
+                 }
+
+                 // 2. Play rhythmic beeps and countdown speech under 10 seconds remaining
+                 if (next <= 10) {
+                     const pitch = next === 1 ? 1200 : 880;
+                     playRhythmTick(pitch, 0.15);
+                     speakWithQueue(String(next), true);
+                 }
              }
-
-             // Announcements
-             if (next === 30) {
-                 speakWithQueue("間もなく処刑コードが入力できます。");
-             } else if (next <= 10) {
-                 const pitch = next === 1 ? 1200 : 880;
-                 playRhythmTick(pitch, 0.15);
-                 speakWithQueue(String(next), true);
-             }
-             return next;
-          });
-        } else {
-          if (childEndTimestampRef.current !== null) {
-            const now = Date.now();
-            const next = Math.max(0, Math.ceil((childEndTimestampRef.current - now) / 1000));
-
-            if (next === 0 && timerSeconds > 0) {
-               // 7 minutes expiration: trigger 5-second blackout first, and 3 seconds after blackout starts, play results video.
-               setTimerSeconds(0);
-               setTimeout(() => {
-                  const outcome = gameResult !== 'none' ? gameResult : 'failed';
-                  startVideoPlayback(outcome);
-               }, 3000);
-            } else if (next > 0) {
-               setTimerSeconds(next);
-
-               if (next !== lastAnnouncedSecRef.current) {
-                   lastAnnouncedSecRef.current = next;
-
-                   // 1. Speak announcement at exactly 30 seconds remaining
-                   if (next === 30) {
-                       speakWithQueue("間もなく処刑コードが入力できます。");
-                   }
-
-                   // 2. Play rhythmic beeps and countdown speech under 10 seconds remaining
-                   if (next <= 10) {
-                       const pitch = next === 1 ? 1200 : 880;
-                       playRhythmTick(pitch, 0.15);
-                       speakWithQueue(String(next), true);
-                   }
-               }
-            }
           }
         }
-      }, isOffline ? 1000 : 250);
+      }, 250);
     }
     return () => clearInterval(interval);
-  }, [timerSeconds, puzzleState, isPaused, gameResult, startVideoPlayback, checkActiveOffline]);
+  }, [timerSeconds, puzzleState, isPaused, gameResult, startVideoPlayback]);
 
   // Periodically request phase synchronization from master to prevent drift
   useEffect(() => {

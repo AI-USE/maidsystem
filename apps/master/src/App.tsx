@@ -207,6 +207,9 @@ const App: React.FC = () => {
           setMasterEndTimestamp(null);
           setMasterPuzzlePhase('playing'); // Maintain playing state until child reports RESULTS_VIDEO_FINISHED
 
+          // Automatically trigger result video playback on all terminals
+          sendCommand('PUZZLE_RESULT_FAILED');
+
           const correctList = ["OVERRIDE_SUCCESS", "EXEC_STOP_99"];
           const closeList = ["OVERRIDE_CLOSE", "EXEC_STOP_98"];
 
@@ -315,7 +318,7 @@ const App: React.FC = () => {
   const sendCommand = (type: string, payload: any = {}) => {
     if ((window as any).electron) {
       (window as any).electron.send('SEND_REMOTE_COMMAND', {
-        targetId: selectedChild,
+        targetId: 'all',
         command: { type, payload }
       });
     }

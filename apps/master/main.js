@@ -413,12 +413,14 @@ ipcMain.on('SEND_REMOTE_COMMAND', (event, { targetId, command }) => {
       }, 5000);
   }
 
-  if (targetId === 'all') {
+  if (!targetId || targetId === 'all' || targetId === 'broadcast') {
     io.emit('ADMIN_REMOTE_CTRL', command);
   } else {
     const device = devices.get(targetId);
     if (device && device.socketId) {
         io.to(device.socketId).emit('ADMIN_REMOTE_CTRL', command);
+    } else {
+        io.emit('ADMIN_REMOTE_CTRL', command);
     }
   }
 });
