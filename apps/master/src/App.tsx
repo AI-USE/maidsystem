@@ -61,6 +61,7 @@ const App: React.FC = () => {
 
   // Local synchronized puzzle timer countdown state
   const [puzzleTimer, setPuzzleTimer] = useState<number | null>(null);
+  const [masterEndTimestamp, setMasterEndTimestamp] = useState<number | null>(null);
   const [puzzleTimerPaused, setPuzzleTimerPaused] = useState(false);
   const [masterPuzzlePhase, setMasterPuzzlePhase] = useState<'idle' | 'prepared' | 'playing' | 'paused' | 'waiting_commentary' | 'commentary_playing'>('idle');
 
@@ -167,7 +168,6 @@ const App: React.FC = () => {
     syncDiscordConfig();
   }, [discordToken, discordVoiceChannel]);
 
-  const [masterEndTimestamp, setMasterEndTimestamp] = useState<number | null>(null);
   const lastAnnouncedSecRef = React.useRef<number | null>(null);
 
   // Synchronized puzzle countdown timer loop (Clock/Timestamp drift-immune version)
