@@ -73,17 +73,24 @@ const App: React.FC = () => {
   // Periodic Phase and Timer Sync to prevent child desynchronization or drift
   useEffect(() => {
     const isPlayingOrPaused = masterPuzzlePhase === 'playing' || masterPuzzlePhase === 'paused';
-    if (isPlayingOrPaused && puzzleTimer !== null) {
+    if (isPlayingOrPaused) {
       const interval = setInterval(() => {
-        sendCommand('PHASE_SYNC', {
-          puzzleState: masterPuzzlePhase,
-          timerSeconds: puzzleTimer,
-          isPaused: puzzleTimerPaused
-        });
-      }, 3000);
+        const currentMasterSecs = masterEndTimestamp !== null
+          ? Math.max(0, Math.ceil((masterEndTimestamp - Date.now()) / 1000))
+          : puzzleTimer;
+
+        if (currentMasterSecs !== null) {
+          sendCommand('PHASE_SYNC', {
+            puzzleState: masterPuzzlePhase,
+            timerSeconds: currentMasterSecs,
+            endTimestamp: masterEndTimestamp,
+            isPaused: puzzleTimerPaused
+          });
+        }
+      }, 1000);
       return () => clearInterval(interval);
     }
-  }, [masterPuzzlePhase, puzzleTimer, puzzleTimerPaused]);
+  }, [masterPuzzlePhase, puzzleTimer, masterEndTimestamp, puzzleTimerPaused]);
 
   // Synchronize multiple retired devices list with main process Discord voice bot
   useEffect(() => {

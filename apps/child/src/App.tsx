@@ -1026,7 +1026,7 @@ const App: React.FC = () => {
     if (!isOffline) {
       interval = setInterval(() => {
          emit('CONNECTION_MSG', { text: `CHECK_PHASE_REQUEST: ${puzzleState}:${timerSeconds}` });
-      }, 3000);
+      }, 1000);
     }
     return () => clearInterval(interval);
   }, [puzzleState, timerSeconds, checkActiveOffline]);
@@ -1282,8 +1282,15 @@ const App: React.FC = () => {
       }
       case 'PHASE_SYNC': {
         const { puzzleState: masterState, timerSeconds: masterSecs, isPaused: masterPaused } = cmd.payload;
-        if (masterSecs !== undefined && timerSeconds !== null) {
-          if (Math.abs(timerSeconds - masterSecs) > 2) {
+        if (masterSecs !== undefined && masterSecs !== null) {
+          const currentChildSecs = childEndTimestampRef.current !== null
+            ? Math.max(0, Math.ceil((childEndTimestampRef.current - Date.now()) / 1000))
+            : timerSeconds;
+
+          if (currentChildSecs === null) {
+            setTimerSecondsAndTimestamp(masterSecs);
+          } else if (Math.abs(currentChildSecs - masterSecs) >= 2) {
+            console.log(`[SYNC] Timer drift detected (Child: ${currentChildSecs}s vs Master: ${masterSecs}s). Adjusting...`);
             setTimerSecondsAndTimestamp(masterSecs);
           }
         }
