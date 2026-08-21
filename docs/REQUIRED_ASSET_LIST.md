@@ -14,14 +14,17 @@
 | :--- | :--- | :--- | :--- |
 | **BGM (音源)** | `bgm.mp3` | `apps/child/public/bgm.mp3` | 親機のスタート待機中（PREPARE）から終了までループ再生されるバックグラウンドミュージック（※未配置の場合は電子合成音が自動再生されるセーフティ機構付） |
 | **BGM (退室案内用)**| `bgm_exit.mp3` | `apps/child/public/bgm_exit.mp3` | 解説動画が終了し、最終退出ロック画面（MISSION SUCCESSFUL / FAILED）に移行した直後から無限ループで再生される退室用BGM。Setupで設定された音量割合がそのまま適用されます。（※未配置の場合は心地よい和音（ド・ミのサイン波合成音）が自動再生されるセーフティ機構付） |
+| **ヒント音声 1** | `hint1.mp3` | `apps/child/public/hint1.mp3` | ゲーム開始から60秒経った状態でロック解除画面（locked）から進めていない場合、自動的にループ再生され続けるヒント音源（BGMは止めない）。ロック解除された瞬間に再生停止します。 |
+| **ヒント音声 2** | `hint2.mp3` | `apps/child/public/hint2.mp3` | ロック画面解除（browsing_pdf_1）から60秒経過しても管理者モード（boot_loadingやadmin_desktop）に進めていない場合、自動的にループ再生され続けるヒント音源（BGMは止めない）。管理者モードに到達した瞬間に再生停止します。 |
+| **ロック解除音 (単発)** | `unlock.mp3` | `apps/child/public/unlock.mp3` | ロック解除画面からPDF1閲覧画面に進んだ瞬間、1回のみ再生される演出音声ファイル（非ループ）。 |
 | **映像 ( unskippable )**| `start/` フォルダ内の動画 | `apps/child/public/videos/start/` | 親機で「なぞ解きスタート」を押した際、カウントダウン前に全員で一斉上映される強制介入ビデオファイル（推奨：`start.mp4`） |
 | **映像 ( unskippable )**| `admin/` フォルダ内の動画 | `apps/child/public/videos/admin/` | 管理者モード起動3秒後に再生される、全画面「緊急強制システム介入配信」ビデオファイル（推奨：`boot.mp4`） |
 | **映像 ( 結果発表 )**| `result/correct/` 内の動画 | `apps/child/public/videos/result/correct/` | 謎解きに完全正解して脱出成功した際に一斉配信するお祝いビデオファイル（推奨：`correct.mp4`） |
 | **映像 ( 結果発表 )**| `result/close/` 内の動画 | `apps/child/public/videos/result/close/` | 惜しくも「おしい」パスコードで終わってしまった際に一斉配信するおしいビデオファイル（推奨：`close.mp4` |
 | **映像 ( 結果発表 )**| `result/failed/` 内の動画 | `apps/child/public/videos/result/failed/` | 謎解きに失敗または無回答だった際に一斉配信する失敗ビデオファイル（推奨：`failed.mp4`） |
 | **映像 ( 解説用 )**| `commentary/` フォルダ内の動画 | `apps/child/public/videos/commentary/` | 解説時などに使用する解説チュートリアル上映用ビデオファイル（推奨：`commentary.mp4`） |
-| **映像 ( 監視用 )**| `cam1.mp4` | `apps/child/public/videos/cam1.mp4` | ビデオセキュリティ監視グリッド 1ch 用のループ映像ファイル |
-| **映像 ( 監視用 )**| `cam2.mp4` | `apps/child/public/videos/cam2.mp4` | ビデオセキュリティ監視グリッド 2ch 用のループ映像ファイル |
+| **映像 ( 監視用 )**| `cam1.mp4` | `apps/child/public/videos/cam1.mp4` | メイド喫茶部 (CAM 1) 用のループ映像ファイル |
+| **映像 ( 監視用 )**| `cam2.mp4` | `apps/child/public/videos/cam2.mp4` | 管理室 (CAM 2) 用のループ映像ファイル |
 | **PDF (謎解き本編用)** | `doc1.pdf` | `apps/child/public/documents/doc1.pdf` | ロック解除後に表示される「機密文書 1」としてのフルスクリーン PDF ドキュメント |
 | **PDF (謎解き本編用)** | `doc2.pdf` | `apps/child/public/documents/doc2.pdf` | 管理者デスクトップ内で閲覧する「機密文書 2」としての PDF ドキュメント |
 

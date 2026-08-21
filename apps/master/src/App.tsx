@@ -61,6 +61,7 @@ const App: React.FC = () => {
 
   // Local synchronized puzzle timer countdown state
   const [puzzleTimer, setPuzzleTimer] = useState<number | null>(null);
+  const [masterEndTimestamp, setMasterEndTimestamp] = useState<number | null>(null);
   const [puzzleTimerPaused, setPuzzleTimerPaused] = useState(false);
   const [masterPuzzlePhase, setMasterPuzzlePhase] = useState<'idle' | 'prepared' | 'playing' | 'paused' | 'waiting_commentary' | 'commentary_playing'>('idle');
 
@@ -73,17 +74,24 @@ const App: React.FC = () => {
   // Periodic Phase and Timer Sync to prevent child desynchronization or drift
   useEffect(() => {
     const isPlayingOrPaused = masterPuzzlePhase === 'playing' || masterPuzzlePhase === 'paused';
-    if (isPlayingOrPaused && puzzleTimer !== null) {
+    if (isPlayingOrPaused) {
       const interval = setInterval(() => {
-        sendCommand('PHASE_SYNC', {
-          puzzleState: masterPuzzlePhase,
-          timerSeconds: puzzleTimer,
-          isPaused: puzzleTimerPaused
-        });
-      }, 3000);
+        const currentMasterSecs = masterEndTimestamp !== null
+          ? Math.max(0, Math.ceil((masterEndTimestamp - Date.now()) / 1000))
+          : puzzleTimer;
+
+        if (currentMasterSecs !== null) {
+          sendCommand('PHASE_SYNC', {
+            puzzleState: masterPuzzlePhase,
+            timerSeconds: currentMasterSecs,
+            endTimestamp: masterEndTimestamp,
+            isPaused: puzzleTimerPaused
+          });
+        }
+      }, 1000);
       return () => clearInterval(interval);
     }
-  }, [masterPuzzlePhase, puzzleTimer, puzzleTimerPaused]);
+  }, [masterPuzzlePhase, puzzleTimer, masterEndTimestamp, puzzleTimerPaused]);
 
   // Synchronize multiple retired devices list with main process Discord voice bot
   useEffect(() => {
@@ -160,7 +168,6 @@ const App: React.FC = () => {
     syncDiscordConfig();
   }, [discordToken, discordVoiceChannel]);
 
-  const [masterEndTimestamp, setMasterEndTimestamp] = useState<number | null>(null);
   const lastAnnouncedSecRef = React.useRef<number | null>(null);
 
   // Synchronized puzzle countdown timer loop (Clock/Timestamp drift-immune version)
@@ -206,6 +213,9 @@ const App: React.FC = () => {
         else if (next === 0) {
           setMasterEndTimestamp(null);
           setMasterPuzzlePhase('playing'); // Maintain playing state until child reports RESULTS_VIDEO_FINISHED
+
+          // Automatically trigger result video playback on all terminals
+          sendCommand('PUZZLE_RESULT_FAILED');
 
           const correctList = ["OVERRIDE_SUCCESS", "EXEC_STOP_99"];
           const closeList = ["OVERRIDE_CLOSE", "EXEC_STOP_98"];
@@ -315,7 +325,7 @@ const App: React.FC = () => {
   const sendCommand = (type: string, payload: any = {}) => {
     if ((window as any).electron) {
       (window as any).electron.send('SEND_REMOTE_COMMAND', {
-        targetId: selectedChild,
+        targetId: 'all',
         command: { type, payload }
       });
     }

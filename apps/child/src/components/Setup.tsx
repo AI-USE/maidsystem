@@ -26,6 +26,10 @@ export const Setup: React.FC<OfflineSetupProps> = ({ onComplete, onStartOffline,
   });
   const [kioskEnabled, setKioskEnabled] = useState(true);
   const [testStatus, setTestStatus] = useState<'idle' | 'testing' | 'success' | 'error'>('idle');
+  const keepHiraganaOnly = (val: string) => {
+      return val.replace(/[^\u3040-\u309Fー]/g, '');
+  };
+
   const [showPasswords, setShowPasswords] = useState(false);
   const [passwords, setPasswords] = useState(() => {
       const exit = localStorage.getItem('pass_exit');
@@ -33,10 +37,10 @@ export const Setup: React.FC<OfflineSetupProps> = ({ onComplete, onStartOffline,
       const admin = localStorage.getItem('pass_admin');
       const setup = localStorage.getItem('pass_setup');
       return {
-          exit: !exit || exit === 'null' || exit === 'undefined' ? 'MADREST104' : exit,
-          event: !event || event === 'null' || event === 'undefined' ? 'EVT_TRIGGER_99' : event,
-          admin: !admin || admin === 'null' || admin === 'undefined' ? 'ADMIN_DASH' : admin,
-          setup: !setup || setup === 'null' || setup === 'undefined' ? 'ADMIN_SETUP' : setup
+          exit: !exit || exit === 'null' || exit === 'undefined' ? 'まどれすと' : exit,
+          event: !event || event === 'null' || event === 'undefined' ? 'えべんと' : event,
+          admin: !admin || admin === 'null' || admin === 'undefined' ? 'あどみん' : admin,
+          setup: !setup || setup === 'null' || setup === 'undefined' ? 'せっとあっぷ' : setup
       };
   });
   const [bgmVolume, setBgmVolume] = useState<number>(() => {
@@ -270,19 +274,14 @@ export const Setup: React.FC<OfflineSetupProps> = ({ onComplete, onStartOffline,
                     <Shield className="text-white/60" size={32} />
                 </div>
                 <div className="flex items-center justify-between mb-2">
-                    <h1 className="text-2xl font-bold tracking-tight">パスワード設定</h1>
-                    <button
-                        onClick={() => setShowPasswords(!showPasswords)}
-                        className="p-2 text-white/20 hover:text-white transition-colors"
-                    >
-                        {showPasswords ? <EyeOff size={20} /> : <Eye size={20} />}
-                    </button>
+                    <h1 className="text-2xl font-bold tracking-tight">パスワード設定 (ひらがな限定)</h1>
                 </div>
                 <div className="space-y-4 text-left">
                     <div>
                         <label className="text-[10px] uppercase tracking-widest text-white/40 ml-2">終了用</label>
                         <input
-                            type={showPasswords ? "text" : "password"}
+                            type="text"
+                            placeholder="英数字ひらがなどれでも可 (ひらがなで検証されます)"
                             className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 outline-none focus:border-white/30 transition-all font-mono"
                             value={passwords.exit}
                             onChange={(e) => setPasswords({...passwords, exit: e.target.value})}
@@ -291,7 +290,8 @@ export const Setup: React.FC<OfflineSetupProps> = ({ onComplete, onStartOffline,
                     <div>
                         <label className="text-[10px] uppercase tracking-widest text-white/40 ml-2">イベント画面ロック解除用</label>
                         <input
-                            type={showPasswords ? "text" : "password"}
+                            type="text"
+                            placeholder="英数字ひらがなどれでも可 (ひらがなで検証されます)"
                             className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 outline-none focus:border-white/30 transition-all font-mono"
                             value={passwords.event}
                             onChange={(e) => setPasswords({...passwords, event: e.target.value})}
@@ -300,7 +300,8 @@ export const Setup: React.FC<OfflineSetupProps> = ({ onComplete, onStartOffline,
                     <div>
                         <label className="text-[10px] uppercase tracking-widest text-white/40 ml-2">管理者用イベント解除用（電源ボタン用）</label>
                         <input
-                            type={showPasswords ? "text" : "password"}
+                            type="text"
+                            placeholder="英数字ひらがなどれでも可 (ひらがなで検証されます)"
                             className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 outline-none focus:border-white/30 transition-all font-mono"
                             value={passwords.admin}
                             onChange={(e) => setPasswords({...passwords, admin: e.target.value})}
@@ -309,7 +310,8 @@ export const Setup: React.FC<OfflineSetupProps> = ({ onComplete, onStartOffline,
                     <div>
                         <label className="text-[10px] uppercase tracking-widest text-white/40 ml-2">管理者ツール起動用（設定画面用）</label>
                         <input
-                            type={showPasswords ? "text" : "password"}
+                            type="text"
+                            placeholder="英数字ひらがなどれでも可 (ひらがなで検証されます)"
                             className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 outline-none focus:border-white/30 transition-all font-mono"
                             value={passwords.setup}
                             onChange={(e) => setPasswords({...passwords, setup: e.target.value})}
